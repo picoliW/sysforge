@@ -20,6 +20,10 @@ futures.workspace = true
 ratatui.workspace = true
 tokio.workspace = true
 sysforge-system.workspace = true
+directories.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

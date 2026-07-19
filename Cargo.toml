@@ -19,6 +19,10 @@ ratatui = "0.29"
 tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
 sysforge-system = { path = "crates/system" }
 thiserror = "2"
+directories = "6"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -10,11 +10,12 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Gauge, Paragraph};
 use sysforge_common::collector::Collector;
 use sysforge_system::memory::{MemoryCollector, MemorySnapshot};
+use sysforge_system::cpu::{CpuCollector, CpuSnapshot};
 
 use crate::state::{AppState, SharedState};
 use crate::terminal::Tui;
 
-const FRAME_INTERVAL: Duration = Duration::from_millis(100); // ~10 fps
+const FRAME_INTERVAL: Duration = Duration::from_millis(100); 
 
 pub async fn run(terminal: &mut Tui) -> Result<()> {
     let state: SharedState = Arc::default();
@@ -23,14 +24,23 @@ pub async fn run(terminal: &mut Tui) -> Result<()> {
         s.memory = Some(snap);
     });
 
+    spawn_collector(CpuCollector::default(), Arc::clone(&state), |s, snap| {
+        if let Some(snap) = snap {
+            s.cpu = Some(snap);
+        }
+    });
+
     let mut events = EventStream::new();
     let mut frame_timer = tokio::time::interval(FRAME_INTERVAL);
 
     loop {
         tokio::select! {
             _ = frame_timer.tick() => {
-                let memory = state.read().map(|s| s.memory).unwrap_or_default();
-                terminal.draw(|frame| render(frame, memory))?;
+                let (cpu, memory) = state
+                    .read()
+                    .map(|s| (s.cpu.clone(), s.memory))
+                    .unwrap_or_default();
+                terminal.draw(|frame| render(frame, cpu.as_ref(), memory))?;
             }
             Some(Ok(event)) = events.next() => {
                 if let Event::Key(key) = event {
@@ -77,15 +87,48 @@ fn should_quit(key: KeyEvent) -> bool {
         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
-fn render(frame: &mut Frame, memory: Option<MemorySnapshot>) {
-    let outer = Block::default()
-        .title(" SysForge ─ Memory ")
-        .title_alignment(Alignment::Center)
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
-    let inner = outer.inner(frame.area());
-    frame.render_widget(outer, frame.area());
+fn render(frame: &mut Frame, cpu: Option<&CpuSnapshot>, memory: Option<MemorySnapshot>) {
+    let [cpu_area, mem_area] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(4)])
+            .areas(frame.area());
+    render_cpu(frame, cpu_area, cpu);
+    render_memory(frame, mem_area, memory);
+}
+
+fn render_cpu(frame: &mut Frame, area: ratatui::layout::Rect, cpu: Option<&CpuSnapshot>) {
+    let block = panel_block(" CPU ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let Some(cpu) = cpu else {
+        frame.render_widget(Paragraph::new("sampling..."), inner);
+        return;
+    };
+
+    let [gauge_area, cores_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+            .margin(1)
+            .areas(inner);
+
+    frame.render_widget(percent_gauge(cpu.total), gauge_area);
+
+    let cores = cpu
+        .per_core
+        .iter()
+        .enumerate()
+        .map(|(i, pct)| format!("c{i:02} {pct:5.1}%"))
+        .collect::<Vec<_>>()
+        .join("   ");
+    frame.render_widget(
+        Paragraph::new(cores).wrap(ratatui::widgets::Wrap { trim: true }),
+        cores_area,
+    );
+}
+
+fn render_memory(frame: &mut Frame, area: ratatui::layout::Rect, memory: Option<MemorySnapshot>) {
+    let block = panel_block(" Memory ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
 
     let Some(mem) = memory else {
         frame.render_widget(Paragraph::new("sampling..."), inner);
@@ -93,15 +136,11 @@ fn render(frame: &mut Frame, memory: Option<MemorySnapshot>) {
     };
 
     let [gauge_area, details_area] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-            .margin(1)
+        Layout::horizontal([Constraint::Percentage(40), Constraint::Min(0)])
+            .spacing(2)
             .areas(inner);
 
-    let gauge = Gauge::default()
-        .ratio((mem.used_percent() / 100.0).clamp(0.0, 1.0))
-        .label(format!("{:.1}%", mem.used_percent()))
-        .gauge_style(Style::default().fg(Color::Cyan));
-    frame.render_widget(gauge, gauge_area);
+    frame.render_widget(percent_gauge(mem.used_percent()), gauge_area);
 
     let details = Paragraph::new(format!(
         "used {} / {}   swap {} / {}",
@@ -111,6 +150,21 @@ fn render(frame: &mut Frame, memory: Option<MemorySnapshot>) {
         format_bytes(mem.swap_total),
     ));
     frame.render_widget(details, details_area);
+}
+
+fn panel_block(title: &str) -> Block<'_> {
+    Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan))
+}
+
+fn percent_gauge(percent: f64) -> Gauge<'static> {
+    Gauge::default()
+        .ratio((percent / 100.0).clamp(0.0, 1.0))
+        .label(format!("{percent:.1}%"))
+        .gauge_style(Style::default().fg(Color::Cyan))
 }
 
 #[allow(clippy::cast_precision_loss)]
