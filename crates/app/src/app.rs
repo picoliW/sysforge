@@ -62,7 +62,8 @@ fn spawn_collector<C>(
     C: Collector,
 {
     tokio::spawn(async move {
-        let mut timer = tokio::time::interval(collector.interval());
+        tracing::info!(collector = collector.name(), "collector started");
+        let mut timer = tokio::time::interval(collector.interval());        
         loop {
             timer.tick().await;
             match collector.collect().await {
@@ -71,8 +72,12 @@ fn spawn_collector<C>(
                         apply(&mut s, sample);
                     }
                 }
-                Err(_err) => {
-
+                Err(err) => {
+                    tracing::warn!(
+                        collector = collector.name(),
+                        error = %err,
+                        "collector failed",
+                    );
                 }
             }
         }

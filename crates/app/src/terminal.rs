@@ -43,6 +43,7 @@ pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         restore();
+        tracing::error!(panic = %info, "panic");
         default_hook(info);
     }));
 }
