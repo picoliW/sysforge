@@ -12,6 +12,11 @@ authors = ["Luiz Picoli"]
 
 [workspace.dependencies]
 sysforge-common = { path = "crates/common" }
+anyhow = "1"
+crossterm = { version = "0.28", features = ["event-stream"] }
+futures = "0.3"
+ratatui = "0.29"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
