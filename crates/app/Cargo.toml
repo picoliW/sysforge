@@ -1,0 +1,19 @@
+[package]
+name = "sysforge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "A developer operations dashboard for Linux and WSL"
+
+[[bin]]
+name = "sysforge"
+path = "src/main.rs"
+
+[dependencies]
+sysforge-common.workspace = true
+
+[lints]
+workspace = true
