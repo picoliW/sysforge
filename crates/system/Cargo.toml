@@ -1,15 +1,16 @@
 [package]
-name = "sysforge-common"
+name = "sysforge-system"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Shared types and errors for SysForge"
+description = "Operating system collectors (memory, CPU, ...) for SysForge"
 
 [dependencies]
-thiserror.workspace = true
+sysforge-common.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true
