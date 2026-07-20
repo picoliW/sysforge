@@ -1,10 +1,10 @@
-//! Panel composition.
+//! View composition.
 //!
-//! This module is the only place that knows the whole [`AppState`]: it
-//! splits the frame and hands each panel exactly the data it needs,
-//! plus a [`RenderCtx`] carrying shared visual context. Panels are
-//! independent by convention — each submodule exposes a `render`
-//! function with its own tailored signature.
+//! A view is a full screen; panels are reusable components that views
+//! arrange. This module is the only place that knows the whole
+//! [`AppState`]: it dispatches on the current [`ViewId`], splits the
+//! frame, and hands each panel exactly the data it needs plus a
+//! [`RenderCtx`].
 
 mod components;
 mod cpu;
@@ -14,11 +14,11 @@ mod overlay;
 mod processes;
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 
 use crate::state::{AppState, DockerUiState};
 use crate::theme::Theme;
-use crate::ui::{PanelId, UiState};
+use crate::ui::{PanelId, UiState, ViewId};
 
 /// Shared visual context handed to every panel.
 pub(super) struct RenderCtx<'a> {
@@ -28,18 +28,54 @@ pub(super) struct RenderCtx<'a> {
     pub focused: bool,
 }
 
-/// Draws a single frame from the observed state, the UI state and the
-/// active theme.
+/// Draws a single frame: view bar, the current view, and any overlay.
 pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) {
+    let [bar_area, body] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(frame.area());
+    components::view_bar(frame, bar_area, ui.view, theme);
+
     let ctx = |panel: PanelId| RenderCtx {
         theme,
         focused: ui.focus == panel,
     };
+    match ui.view {
+        ViewId::Overview => render_overview(frame, body, state, ui, &ctx),
+        ViewId::Docker => docker::render(
+            frame,
+            body,
+            &state.docker,
+            ui.docker_selected,
+            &ctx(PanelId::Docker),
+        ),
+        ViewId::Processes => processes::render(
+            frame,
+            body,
+            state.processes.as_ref(),
+            ui.processes_selected,
+            &ctx(PanelId::Processes),
+        ),
+    }
 
+    if let Some(overlay) = &ui.overlay {
+        overlay::render(frame, overlay, theme);
+    }
+}
+
+/// The summary view: every domain at a glance.
+fn render_overview<'a>(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    ui: &UiState,
+    ctx: &dyn Fn(PanelId) -> RenderCtx<'a>,
+) {
     if state.docker == DockerUiState::Disabled {
-        let [cpu_area, mem_area] =
-            Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
-                .areas(frame.area());
+        let [cpu_area, mem_area, proc_area] = Layout::vertical([
+            Constraint::Percentage(30),
+            Constraint::Percentage(25),
+            Constraint::Min(0),
+        ])
+        .areas(area);
         cpu::render(
             frame,
             cpu_area,
@@ -54,6 +90,13 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             &state.memory_history,
             &ctx(PanelId::Memory),
         );
+        processes::render(
+            frame,
+            proc_area,
+            state.processes.as_ref(),
+            ui.processes_selected,
+            &ctx(PanelId::Processes),
+        );
     } else {
         let [cpu_area, mem_area, docker_area, proc_area] = Layout::vertical([
             Constraint::Percentage(20),
@@ -61,7 +104,7 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             Constraint::Percentage(30),
             Constraint::Min(0),
         ])
-        .areas(frame.area());
+        .areas(area);
         cpu::render(
             frame,
             cpu_area,
@@ -90,9 +133,5 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             ui.processes_selected,
             &ctx(PanelId::Processes),
         );
-    }
-
-    if let Some(overlay) = &ui.overlay {
-        overlay::render(frame, overlay, theme);
     }
 }

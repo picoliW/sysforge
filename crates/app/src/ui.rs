@@ -1,49 +1,94 @@
+//! UI-only state: current view, focus, in-panel selection and the
+//! modal overlay.
+//!
+//! A [`ViewId`] is a full screen of the application; a [`PanelId`] is a
+//! reusable component that may appear in several views. Owned
+//! exclusively by the event loop — unlike [`crate::state::AppState`]
+//! it is written by a single thread and needs no lock.
+
 use sysforge_docker::collector::{ContainerInfo, DockerStatus};
 
 use crate::input::{self, Action};
 use crate::state::{AppState, DockerUiState};
 
+/// The reusable panels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PanelId {
+    /// CPU panel.
     #[default]
     Cpu,
+    /// Memory panel.
     Memory,
+    /// Docker panel.
     Docker,
+    /// Processes panel.
     Processes,
 }
 
-impl PanelId {
-    const ORDER: [Self; 4] = [Self::Cpu, Self::Memory, Self::Docker, Self::Processes];
-    fn step(self, forward: bool, docker_enabled: bool) -> Self {
-        let order = Self::ORDER;
-        let len = order.len();
-        let position = order.iter().position(|p| *p == self).unwrap_or(0);
-        let mut index = position;
-        loop {
-            index = if forward {
-                (index + 1) % len
-            } else {
-                (index + len - 1) % len
-            };
-            let candidate = order[index];
-            if candidate != Self::Docker || docker_enabled {
-                return candidate;
-            }
-            if index == position {
-                return self;
-            }
+/// The full screens of the application.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ViewId {
+    /// Summary of every domain (`1`).
+    #[default]
+    Overview,
+    /// Docker, full screen (`2`).
+    Docker,
+    /// Processes, full screen (`3`).
+    Processes,
+}
+
+impl ViewId {
+    /// Every view, in switch-key order.
+    pub const ALL: [Self; 3] = [Self::Overview, Self::Docker, Self::Processes];
+
+    /// Title shown in the view bar.
+    #[must_use]
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Overview => "overview",
+            Self::Docker => "docker",
+            Self::Processes => "processes",
+        }
+    }
+
+    /// The panels composing this view, in Tab order.
+    fn panels(self, docker_enabled: bool) -> &'static [PanelId] {
+        match (self, docker_enabled) {
+            (Self::Overview, true) => &[
+                PanelId::Cpu,
+                PanelId::Memory,
+                PanelId::Docker,
+                PanelId::Processes,
+            ],
+            (Self::Overview, false) => &[PanelId::Cpu, PanelId::Memory, PanelId::Processes],
+            (Self::Docker, _) => &[PanelId::Docker],
+            (Self::Processes, _) => &[PanelId::Processes],
         }
     }
 }
 
+/// A modal, scrollable text view. Generic on purpose: today it shows
+/// container logs and help; tomorrow resource details or errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Overlay {
+    /// Title shown on the overlay border.
     pub title: String,
+    /// Content lines.
     pub lines: Vec<String>,
+    /// First visible line.
     pub scroll: u16,
 }
 
 impl Overlay {
+    /// An overlay with ready content.
+    pub fn text(title: impl Into<String>, lines: Vec<String>) -> Self {
+        Self {
+            title: title.into(),
+            lines,
+            scroll: 0,
+        }
+    }
+
     fn loading(title: String) -> Self {
         Self {
             title,
@@ -61,36 +106,50 @@ impl Overlay {
         let last = u16::try_from(last).unwrap_or(u16::MAX);
         self.scroll = self.scroll.saturating_add(1).min(last);
     }
-    pub fn text(title: impl Into<String>, lines: Vec<String>) -> Self {
-        Self {
-            title: title.into(),
-            lines,
-            scroll: 0,
-        }
-    }
 }
 
+/// An intention produced by the UI for the runtime to execute.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    FetchDockerLogs { id: String },
+    /// Fetch the logs of a container and deliver them as a [`UiEvent`].
+    FetchDockerLogs {
+        /// Engine identifier of the container.
+        id: String,
+    },
 }
 
+/// An asynchronous result delivered back to the UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEvent {
-    OverlayContent { lines: Vec<String> },
+    /// Content for the currently open overlay.
+    OverlayContent {
+        /// Replacement content lines.
+        lines: Vec<String>,
+    },
 }
 
+/// View, focus, selections and overlay, mutated only by
+/// [`UiState::handle`] and [`UiState::apply_event`].
 #[derive(Debug, Default)]
 pub struct UiState {
+    /// The screen currently shown.
+    pub view: ViewId,
+    /// Which panel currently receives in-panel actions.
     pub focus: PanelId,
+    /// Selected row in the Docker container table.
     pub docker_selected: usize,
+    /// Selected row in the processes table.
     pub processes_selected: usize,
-
+    /// Modal overlay, if one is open.
     pub overlay: Option<Overlay>,
 }
 
 impl UiState {
+    /// Applies an action given the latest observed state, possibly
+    /// producing a [`Command`]. [`Action::Quit`] is handled by the
+    /// caller, not here.
     pub fn handle(&mut self, action: Action, state: &AppState) -> Option<Command> {
+        // Modal: an open overlay captures the interaction.
         if let Some(overlay) = &mut self.overlay {
             match action {
                 Action::Close => self.overlay = None,
@@ -103,13 +162,23 @@ impl UiState {
 
         let docker_enabled = state.docker != DockerUiState::Disabled;
         match action {
-            Action::Quit | Action::Close => {}
-            Action::FocusNext => self.focus = self.focus.step(true, docker_enabled),
-            Action::FocusPrev => self.focus = self.focus.step(false, docker_enabled),
-            Action::FocusPanel(panel) => {
-                if panel != PanelId::Docker || docker_enabled {
-                    self.focus = panel;
+            Action::Quit => {}
+            Action::Close => {
+                // Esc means "back": from a dedicated view, to Overview.
+                if self.view != ViewId::Overview {
+                    self.switch_to(ViewId::Overview, docker_enabled);
                 }
+            }
+            Action::SwitchView(view) => {
+                if view != ViewId::Docker || docker_enabled {
+                    self.switch_to(view, docker_enabled);
+                }
+            }
+            Action::FocusNext => {
+                self.focus = cycle(self.view.panels(docker_enabled), self.focus, true);
+            }
+            Action::FocusPrev => {
+                self.focus = cycle(self.view.panels(docker_enabled), self.focus, false);
             }
             Action::SelectionUp => match self.focus {
                 PanelId::Docker => {
@@ -153,6 +222,8 @@ impl UiState {
         None
     }
 
+    /// Applies an asynchronous result. A late result for a closed
+    /// overlay is dropped: the user's intent wins.
     pub fn apply_event(&mut self, event: UiEvent) {
         match event {
             UiEvent::OverlayContent { lines } => {
@@ -163,8 +234,26 @@ impl UiState {
             }
         }
     }
+
+    fn switch_to(&mut self, view: ViewId, docker_enabled: bool) {
+        self.view = view;
+        self.focus = view.panels(docker_enabled)[0];
+    }
 }
 
+/// The panel after (or before) `current` in `panels`, wrapping around.
+fn cycle(panels: &[PanelId], current: PanelId, forward: bool) -> PanelId {
+    let len = panels.len();
+    let position = panels.iter().position(|p| *p == current).unwrap_or(0);
+    let next = if forward {
+        (position + 1) % len
+    } else {
+        (position + len - 1) % len
+    };
+    panels[next]
+}
+
+/// How many rows the Docker table currently has.
 fn docker_rows(state: &AppState) -> usize {
     match &state.docker {
         DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.len(),
@@ -177,6 +266,7 @@ fn process_rows(state: &AppState) -> usize {
     state.processes.as_ref().map_or(0, |s| s.processes.len())
 }
 
+/// The container behind a table row, if any.
 fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> {
     match &state.docker {
         DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.get(index),
@@ -189,7 +279,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tab_skips_docker_when_disabled() {
+    fn tab_cycles_overview_without_docker() {
         let mut ui = UiState::default();
         let mut state = AppState::new(10, false);
         state.docker = DockerUiState::Disabled;
@@ -201,10 +291,23 @@ mod tests {
     }
 
     #[test]
-    fn direct_focus_on_disabled_docker_is_ignored() {
+    fn switching_to_disabled_docker_view_is_ignored() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, false);
-        ui.handle(Action::FocusPanel(PanelId::Docker), &state);
+        let mut state = AppState::new(10, false);
+        state.docker = DockerUiState::Disabled;
+        ui.handle(Action::SwitchView(ViewId::Docker), &state);
+        assert_eq!(ui.view, ViewId::Overview);
+    }
+
+    #[test]
+    fn dedicated_view_focuses_its_panel_and_esc_goes_back() {
+        let mut ui = UiState::default();
+        let state = AppState::new(10, true);
+        ui.handle(Action::SwitchView(ViewId::Processes), &state);
+        assert_eq!(ui.view, ViewId::Processes);
+        assert_eq!(ui.focus, PanelId::Processes);
+        ui.handle(Action::Close, &state);
+        assert_eq!(ui.view, ViewId::Overview);
         assert_eq!(ui.focus, PanelId::Cpu);
     }
 
@@ -225,7 +328,6 @@ mod tests {
         let command = ui.handle(Action::FocusNext, &state);
         assert_eq!(command, None);
         assert_eq!(ui.focus, PanelId::Cpu);
-
         ui.handle(Action::Close, &state);
         assert!(ui.overlay.is_none());
     }

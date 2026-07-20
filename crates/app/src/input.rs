@@ -1,39 +1,65 @@
+//! Keyboard input translation and its documentation.
+//!
+//! Bindings are *data*: one declarative table drives both the runtime
+//! keymap ([`action_for`]) and the help overlay ([`help_lines`]). A new
+//! key is one new table row — help can never drift out of date.
+
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use crate::ui::PanelId;
+use crate::ui::ViewId;
 
+/// Everything the user can ask the application to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
+    /// Exit the application.
     Quit,
+    /// Close the current context: an overlay, or a dedicated view.
     Close,
+    /// Switch to a view.
+    SwitchView(ViewId),
+    /// Focus the next panel within the current view.
     FocusNext,
+    /// Focus the previous panel within the current view.
     FocusPrev,
-    FocusPanel(PanelId),
+    /// Move the in-panel selection up.
     SelectionUp,
+    /// Move the in-panel selection down.
     SelectionDown,
+    /// Open the logs of the selected item.
     OpenLogs,
+    /// Open the help overlay.
     OpenHelp,
 }
 
+/// Help section a binding belongs to. Presentation only: what an
+/// action *means* is still decided in [`crate::ui`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Context {
+    /// Always applicable.
     Global,
+    /// Switching between views.
+    Views,
+    /// Moving between and inside panels.
     Navigation,
+    /// Docker actions.
     Docker,
 }
 
 impl Context {
-    const ORDER: [Self; 3] = [Self::Global, Self::Navigation, Self::Docker];
+    /// Section order and titles in the help overlay.
+    const ORDER: [Self; 4] = [Self::Global, Self::Views, Self::Navigation, Self::Docker];
 
     fn title(self) -> &'static str {
         match self {
             Self::Global => "Global",
+            Self::Views => "Views",
             Self::Navigation => "Navigation",
             Self::Docker => "Docker",
         }
     }
 }
 
+/// One key binding: the single source of truth for behavior and help.
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
     code: KeyCode,
@@ -43,6 +69,7 @@ pub struct Binding {
     description: &'static str,
 }
 
+/// The complete keymap.
 const BINDINGS: &[Binding] = &[
     Binding {
         code: KeyCode::Char('q'),
@@ -63,7 +90,7 @@ const BINDINGS: &[Binding] = &[
         modifiers: KeyModifiers::NONE,
         action: Action::Close,
         context: Context::Global,
-        description: "close overlay / go back",
+        description: "close overlay / back to overview",
     },
     Binding {
         code: KeyCode::Char('?'),
@@ -71,6 +98,27 @@ const BINDINGS: &[Binding] = &[
         action: Action::OpenHelp,
         context: Context::Global,
         description: "help",
+    },
+    Binding {
+        code: KeyCode::Char('1'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Overview),
+        context: Context::Views,
+        description: "overview",
+    },
+    Binding {
+        code: KeyCode::Char('2'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Docker),
+        context: Context::Views,
+        description: "docker view",
+    },
+    Binding {
+        code: KeyCode::Char('3'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Processes),
+        context: Context::Views,
+        description: "processes view",
     },
     Binding {
         code: KeyCode::Tab,
@@ -85,27 +133,6 @@ const BINDINGS: &[Binding] = &[
         action: Action::FocusPrev,
         context: Context::Navigation,
         description: "focus previous panel",
-    },
-    Binding {
-        code: KeyCode::Char('1'),
-        modifiers: KeyModifiers::NONE,
-        action: Action::FocusPanel(PanelId::Cpu),
-        context: Context::Navigation,
-        description: "focus CPU panel",
-    },
-    Binding {
-        code: KeyCode::Char('2'),
-        modifiers: KeyModifiers::NONE,
-        action: Action::FocusPanel(PanelId::Memory),
-        context: Context::Navigation,
-        description: "focus memory panel",
-    },
-    Binding {
-        code: KeyCode::Char('3'),
-        modifiers: KeyModifiers::NONE,
-        action: Action::FocusPanel(PanelId::Docker),
-        context: Context::Navigation,
-        description: "focus Docker panel",
     },
     Binding {
         code: KeyCode::Up,
@@ -128,17 +155,15 @@ const BINDINGS: &[Binding] = &[
         context: Context::Docker,
         description: "logs of the selected container",
     },
-    Binding {
-        code: KeyCode::Char('4'),
-        modifiers: KeyModifiers::NONE,
-        action: Action::FocusPanel(PanelId::Processes),
-        context: Context::Navigation,
-        description: "focus processes panel",
-    },
 ];
 
+/// Modifier bits that distinguish bindings. SHIFT is deliberately
+/// ignored: it is already encoded in the `KeyCode` itself (`?` *is*
+/// shifted `/`; `BackTab` *is* shifted Tab), and terminals disagree on
+/// whether to also set the SHIFT bit for those keys.
 const DISTINGUISHING: KeyModifiers = KeyModifiers::CONTROL.union(KeyModifiers::ALT);
 
+/// Maps a key event to an action, if it is bound to one.
 #[must_use]
 pub fn action_for(key: KeyEvent) -> Option<Action> {
     if key.kind != KeyEventKind::Press {
@@ -151,6 +176,8 @@ pub fn action_for(key: KeyEvent) -> Option<Action> {
         .map(|b| b.action)
 }
 
+/// The help overlay content, generated from the same table that drives
+/// the keymap.
 #[must_use]
 pub fn help_lines() -> Vec<String> {
     let mut lines = Vec::new();
@@ -169,6 +196,7 @@ pub fn help_lines() -> Vec<String> {
     lines
 }
 
+/// Human-readable label for a binding's key.
 fn key_label(binding: &Binding) -> String {
     let base = match binding.code {
         KeyCode::Char(c) => c.to_string(),
@@ -198,6 +226,14 @@ mod tests {
     fn esc_closes_and_q_quits() {
         assert_eq!(action_for(press(KeyCode::Esc)), Some(Action::Close));
         assert_eq!(action_for(press(KeyCode::Char('q'))), Some(Action::Quit));
+    }
+
+    #[test]
+    fn digits_switch_views() {
+        assert_eq!(
+            action_for(press(KeyCode::Char('2'))),
+            Some(Action::SwitchView(ViewId::Docker))
+        );
     }
 
     #[test]

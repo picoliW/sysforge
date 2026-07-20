@@ -2,12 +2,16 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Modifier;
 use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
 use ratatui::widgets::{Block, BorderType, Borders, Gauge, Sparkline};
 
 use super::RenderCtx;
 use crate::history::History;
 use crate::theme::Theme;
+use crate::ui::ViewId;
 
 /// Standard SysForge panel frame; the focused panel gets the accent
 /// border, unfocused panels recede.
@@ -54,6 +58,30 @@ pub(super) fn format_bytes(bytes: u64) -> String {
         unit += 1;
     }
     format!("{value:.1} {}", UNITS[unit])
+}
+
+/// The one-line view bar: active view in accent, others receded.
+pub(super) fn view_bar(frame: &mut Frame, area: Rect, active: ViewId, theme: &Theme) {
+    let mut spans = vec![Span::styled(
+        " SysForge ",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )];
+    for (index, view) in ViewId::ALL.iter().enumerate() {
+        let style = if *view == active {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.muted)
+        };
+        spans.push(Span::styled(
+            format!("  [{}] {}", index + 1, view.title()),
+            style,
+        ));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 #[cfg(test)]
