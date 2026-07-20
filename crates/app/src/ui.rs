@@ -1,6 +1,6 @@
 use sysforge_docker::collector::{ContainerInfo, DockerStatus};
 
-use crate::input::Action;
+use crate::input::{self, Action};
 use crate::state::{AppState, DockerUiState};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -52,6 +52,9 @@ impl Overlay {
         let last = self.lines.len().saturating_sub(1);
         let last = u16::try_from(last).unwrap_or(u16::MAX);
         self.scroll = self.scroll.saturating_add(1).min(last);
+    }
+    pub fn text(title: impl Into<String>, lines: Vec<String>) -> Self {
+        Self { title: title.into(), lines, scroll: 0 }
     }
 }
 
@@ -121,6 +124,9 @@ impl UiState {
                         });
                     }
                 }
+            }
+            Action::OpenHelp => {
+                self.overlay = Some(Overlay::text(" help ", input::help_lines()));
             }
         }
         self.docker_selected = self
