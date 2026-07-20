@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
+use tokio::sync::mpsc;
 use sysforge_common::collector::Collector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_system::cpu::CpuCollector;
@@ -13,7 +14,7 @@ use crate::input::{self, Action};
 use crate::render;
 use crate::state::{AppState, DockerUiState, SharedState};
 use crate::terminal::Tui;
-use crate::ui::UiState;
+use crate::ui::{Command, UiEvent, UiState};
 
 pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
@@ -51,6 +52,7 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
         );
     }
 
+    let (ui_events_tx, mut ui_events) = mpsc::unbounded_channel::<UiEvent>();
     let mut ui = UiState::default();
     let mut events = EventStream::new();
     let mut frame_timer = tokio::time::interval(config.ui.frame_interval());
@@ -61,6 +63,9 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
                 let snapshot = state.read().map(|s| s.clone()).unwrap_or_default();
                 terminal.draw(|frame| render::render(frame, &snapshot, &ui))?;
             }
+            Some(event) = ui_events.recv() => {
+                ui.apply_event(event);
+            }
             Some(Ok(event)) = events.next() => {
                 if let Event::Key(key) = event {
                     if let Some(action) = input::action_for(key) {
@@ -69,10 +74,30 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
                         }
                         let snapshot =
                             state.read().map(|s| s.clone()).unwrap_or_default();
-                        ui.handle(action, &snapshot);
+                        if let Some(command) = ui.handle(action, &snapshot) {
+                            execute(command, config, ui_events_tx.clone());
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEvent>) {
+    match command {
+        Command::FetchDockerLogs { id } => {
+            let socket = config.docker.socket.clone();
+            tokio::spawn(async move {
+                let lines = match sysforge_docker::logs::fetch_logs(&socket, &id).await {
+                    Ok(lines) if lines.is_empty() => {
+                        vec![String::from("(no log output)")]
+                    }
+                    Ok(lines) => lines,
+                    Err(reason) => vec![format!("failed to fetch logs: {reason}")],
+                };
+                let _ = events.send(UiEvent::OverlayContent { lines });
+            });
         }
     }
 }

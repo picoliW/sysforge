@@ -1,6 +1,7 @@
+use sysforge_docker::collector::{ContainerInfo, DockerStatus};
+
 use crate::input::Action;
 use crate::state::{AppState, DockerUiState};
-use sysforge_docker::collector::DockerStatus;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PanelId {
@@ -31,17 +32,65 @@ impl PanelId {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Overlay {
+    pub title: String,
+    pub lines: Vec<String>,
+    pub scroll: u16,
+}
+
+impl Overlay {
+    fn loading(title: String) -> Self {
+        Self { title, lines: vec![String::from("loading...")], scroll: 0 }
+    }
+
+    fn scroll_up(&mut self) {
+        self.scroll = self.scroll.saturating_sub(1);
+    }
+
+    fn scroll_down(&mut self) {
+        let last = self.lines.len().saturating_sub(1);
+        let last = u16::try_from(last).unwrap_or(u16::MAX);
+        self.scroll = self.scroll.saturating_add(1).min(last);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Command {
+    FetchDockerLogs {
+        id: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UiEvent {
+    OverlayContent {
+        lines: Vec<String>,
+    },
+}
+
 #[derive(Debug, Default)]
 pub struct UiState {
     pub focus: PanelId,
     pub docker_selected: usize,
+    pub overlay: Option<Overlay>,
 }
 
 impl UiState {
-    pub fn handle(&mut self, action: Action, state: &AppState) {
+    pub fn handle(&mut self, action: Action, state: &AppState) -> Option<Command> {
+        if let Some(overlay) = &mut self.overlay {
+            match action {
+                Action::Close => self.overlay = None,
+                Action::SelectionUp => overlay.scroll_up(),
+                Action::SelectionDown => overlay.scroll_down(),
+                _ => {}
+            }
+            return None;
+        }
+
         let docker_enabled = state.docker != DockerUiState::Disabled;
         match action {
-            Action::Quit => {}
+            Action::Quit | Action::Close => {}
             Action::FocusNext => self.focus = self.focus.step(true, docker_enabled),
             Action::FocusPrev => self.focus = self.focus.step(false, docker_enabled),
             Action::FocusPanel(panel) => {
@@ -60,10 +109,35 @@ impl UiState {
                     self.docker_selected = (self.docker_selected + 1).min(last);
                 }
             }
+            Action::OpenLogs => {
+                if self.focus == PanelId::Docker {
+                    if let Some(container) =
+                        selected_container(state, self.docker_selected)
+                    {
+                        self.overlay =
+                            Some(Overlay::loading(format!(" logs: {} ", container.name)));
+                        return Some(Command::FetchDockerLogs {
+                            id: container.id.clone(),
+                        });
+                    }
+                }
+            }
         }
         self.docker_selected = self
             .docker_selected
             .min(docker_rows(state).saturating_sub(1));
+        None
+    }
+
+    pub fn apply_event(&mut self, event: UiEvent) {
+        match event {
+            UiEvent::OverlayContent { lines } => {
+                if let Some(overlay) = &mut self.overlay {
+                    overlay.lines = lines;
+                    overlay.scroll = 0;
+                }
+            }
+        }
     }
 }
 
@@ -71,6 +145,15 @@ fn docker_rows(state: &AppState) -> usize {
     match &state.docker {
         DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.len(),
         _ => 0,
+    }
+}
+
+fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> {
+    match &state.docker {
+        DockerUiState::Observed(DockerStatus::Available(snap)) => {
+            snap.containers.get(index)
+        }
+        _ => None,
     }
 }
 
@@ -102,5 +185,26 @@ mod tests {
         let state = AppState::new(10, true);
         ui.handle(Action::SelectionUp, &state);
         assert_eq!(ui.docker_selected, 0);
+    }
+
+    #[test]
+    fn open_overlay_captures_navigation_and_close() {
+        let mut ui = UiState::default();
+        let state = AppState::new(10, true);
+        ui.overlay = Some(Overlay::loading(String::from(" test ")));
+
+        let command = ui.handle(Action::FocusNext, &state);
+        assert_eq!(command, None);
+        assert_eq!(ui.focus, PanelId::Cpu);
+
+        ui.handle(Action::Close, &state);
+        assert!(ui.overlay.is_none());
+    }
+
+    #[test]
+    fn late_content_for_closed_overlay_is_dropped() {
+        let mut ui = UiState::default();
+        ui.apply_event(UiEvent::OverlayContent { lines: vec![String::from("x")] });
+        assert!(ui.overlay.is_none());
     }
 }

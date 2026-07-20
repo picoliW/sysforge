@@ -2,6 +2,7 @@ mod components;
 mod cpu;
 mod docker;
 mod memory;
+mod overlay;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
@@ -58,4 +59,7 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState) {
         ui.docker_selected,
         ui.focus == PanelId::Docker,
     );
+    if let Some(overlay) = &ui.overlay {
+        overlay::render(frame, overlay);
+    }
 }
