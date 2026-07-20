@@ -1,0 +1,18 @@
+[package]
+name = "sysforge-disk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Disk I/O and filesystem usage collector for SysForge"
+
+[dependencies]
+rustix.workspace = true
+serde.workspace = true
+sysforge-common.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -4,6 +4,7 @@ use anyhow::Result;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
 use sysforge_common::collector::Collector;
+use sysforge_disk::collector::DiskCollector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_git::collector::GitCollector;
 use sysforge_network::collector::NetworkCollector;
@@ -28,70 +29,7 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
         config.git.enabled,
     )));
 
-    spawn_collector(
-        MemoryCollector::new(config.collectors.memory.interval()),
-        Arc::clone(&state),
-        |s, snap| {
-            s.memory_history.push_percent(snap.used_percent());
-            s.memory = Some(snap);
-        },
-    );
-
-    spawn_collector(
-        CpuCollector::new(config.collectors.cpu.interval()),
-        Arc::clone(&state),
-        |s, snap| {
-            if let Some(snap) = snap {
-                s.cpu_history.push_percent(snap.total);
-                s.cpu = Some(snap);
-            }
-        },
-    );
-
-    spawn_collector(
-        ProcessCollector::new(config.collectors.processes.interval()),
-        Arc::clone(&state),
-        |s, snap| {
-            s.processes = Some(snap);
-        },
-    );
-
-    if config.docker.enabled {
-        spawn_collector(
-            DockerCollector::new(config.docker.clone()),
-            Arc::clone(&state),
-            |s, status| {
-                s.docker = DockerUiState::Observed(status);
-            },
-        );
-    }
-
-    if config.git.enabled {
-        spawn_collector(
-            GitCollector::new(config.git.clone()),
-            Arc::clone(&state),
-            |s, status| {
-                s.git = GitUiState::Observed(status);
-            },
-        );
-    }
-
-    if config.network.enabled {
-        let capacity = config.history.capacity;
-        spawn_collector(
-            NetworkCollector::new(config.network.interval()),
-            Arc::clone(&state),
-            move |s, snap| {
-                for iface in &snap.interfaces {
-                    s.network_history
-                        .entry(iface.name.clone())
-                        .or_insert_with(|| History::new(capacity))
-                        .push_rate(iface.total_rate());
-                }
-                s.network = Some(snap);
-            },
-        );
-    }
+    spawn_collectors(&state, config);
 
     let (ui_events_tx, mut ui_events) = mpsc::unbounded_channel::<UiEvent>();
     let mut ui = UiState::default();
@@ -168,4 +106,89 @@ where
             }
         }
     });
+}
+
+/// Starts every enabled collector on its own task.
+fn spawn_collectors(state: &SharedState, config: &Config) {
+    spawn_collector(
+        MemoryCollector::new(config.collectors.memory.interval()),
+        Arc::clone(state),
+        |s, snap| {
+            s.memory_history.push_percent(snap.used_percent());
+            s.memory = Some(snap);
+        },
+    );
+
+    spawn_collector(
+        CpuCollector::new(config.collectors.cpu.interval()),
+        Arc::clone(state),
+        |s, snap| {
+            if let Some(snap) = snap {
+                s.cpu_history.push_percent(snap.total);
+                s.cpu = Some(snap);
+            }
+        },
+    );
+
+    spawn_collector(
+        ProcessCollector::new(config.collectors.processes.interval()),
+        Arc::clone(state),
+        |s, snap| {
+            s.processes = Some(snap);
+        },
+    );
+
+    if config.docker.enabled {
+        spawn_collector(
+            DockerCollector::new(config.docker.clone()),
+            Arc::clone(state),
+            |s, status| {
+                s.docker = DockerUiState::Observed(status);
+            },
+        );
+    }
+
+    if config.git.enabled {
+        spawn_collector(
+            GitCollector::new(config.git.clone()),
+            Arc::clone(state),
+            |s, status| {
+                s.git = GitUiState::Observed(status);
+            },
+        );
+    }
+
+    if config.network.enabled {
+        let capacity = config.history.capacity;
+        spawn_collector(
+            NetworkCollector::new(config.network.interval()),
+            Arc::clone(state),
+            move |s, snap| {
+                for iface in &snap.interfaces {
+                    s.network_history
+                        .entry(iface.name.clone())
+                        .or_insert_with(|| History::new(capacity))
+                        .push_rate(iface.total_rate());
+                }
+                s.network = Some(snap);
+            },
+        );
+    }
+
+    if config.disk.enabled {
+        let capacity = config.history.capacity;
+        spawn_collector(
+            DiskCollector::new(config.disk.interval()),
+            Arc::clone(state),
+            move |s, snap| {
+                for device in &snap.devices {
+                    s.disk_history
+                        .entry(device.name.clone())
+                        .or_insert_with(|| History::new(capacity))
+                        .push_rate(device.total_rate());
+                }
+                s.disk = Some(snap);
+            },
+        );
+    }
 }

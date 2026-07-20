@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use std::collections::HashMap;
+use sysforge_disk::collector::DiskSnapshot;
 use sysforge_docker::collector::DockerStatus;
 use sysforge_git::collector::GitStatus;
 use sysforge_network::collector::NetworkSnapshot;
@@ -37,6 +38,8 @@ pub struct AppState {
     pub git: GitUiState,
     pub network: Option<NetworkSnapshot>,
     pub network_history: HashMap<String, History>,
+    pub disk: Option<DiskSnapshot>,
+    pub disk_history: HashMap<String, History>,
 }
 
 impl AppState {
@@ -60,6 +63,8 @@ impl AppState {
             },
             network: None,
             network_history: HashMap::new(),
+            disk: None,
+            disk_history: HashMap::new(),
         }
     }
 }

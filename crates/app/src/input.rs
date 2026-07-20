@@ -135,6 +135,13 @@ const BINDINGS: &[Binding] = &[
         description: "network view",
     },
     Binding {
+        code: KeyCode::Char('6'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Disk),
+        context: Context::Views,
+        description: "disk view",
+    },
+    Binding {
         code: KeyCode::Tab,
         modifiers: KeyModifiers::NONE,
         action: Action::FocusNext,

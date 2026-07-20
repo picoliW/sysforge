@@ -6,6 +6,7 @@ use crate::theme::Theme;
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use serde::Deserialize;
+use sysforge_disk::config::DiskConfig;
 use sysforge_docker::config::DockerConfig;
 use sysforge_git::config::GitConfig;
 use sysforge_network::config::NetworkConfig;
@@ -20,6 +21,7 @@ pub struct Config {
     pub theme: Theme,
     pub git: GitConfig,
     pub network: NetworkConfig,
+    pub disk: DiskConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -126,6 +128,9 @@ impl Config {
         }
         if self.network.enabled && self.network.interval_ms < 200 {
             bail!("network.interval_ms must be at least 200");
+        }
+        if self.disk.enabled && self.disk.interval_ms < 200 {
+            bail!("disk.interval_ms must be at least 200");
         }
         Ok(())
     }

@@ -1384,6 +1384,7 @@ dependencies = [
  "ratatui",
  "serde",
  "sysforge-common",
+ "sysforge-disk",
  "sysforge-docker",
  "sysforge-git",
  "sysforge-network",
@@ -1400,6 +1401,16 @@ name = "sysforge-common"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "sysforge-disk"
+version = "0.1.0"
+dependencies = [
+ "rustix",
+ "serde",
+ "sysforge-common",
+ "tokio",
 ]
 
 [[package]]

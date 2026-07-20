@@ -21,6 +21,7 @@ pub enum PanelId {
     Processes,
     Git,
     Network,
+    Disk,
 }
 
 /// The full screens of the application.
@@ -32,16 +33,18 @@ pub enum ViewId {
     Processes,
     Git,
     Network,
+    Disk,
 }
 
 impl ViewId {
     /// Every view, in switch-key order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Overview,
         Self::Docker,
         Self::Processes,
         Self::Git,
         Self::Network,
+        Self::Disk,
     ];
 
     /// Title shown in the view bar.
@@ -53,6 +56,7 @@ impl ViewId {
             Self::Processes => "processes",
             Self::Git => "git",
             Self::Network => "network",
+            Self::Disk => "disk",
         }
     }
 
@@ -70,6 +74,7 @@ impl ViewId {
             (Self::Processes, _) => &[PanelId::Processes],
             (Self::Git, _) => &[PanelId::Git],
             (Self::Network, _) => &[PanelId::Network],
+            (Self::Disk, _) => &[PanelId::Disk],
         }
     }
 }

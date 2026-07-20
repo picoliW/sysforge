@@ -29,6 +29,8 @@ bollard = "0.18"
 sysforge-docker = { path = "crates/docker" }
 sysforge-git = { path = "crates/git" }
 sysforge-network = { path = "crates/network" }
+sysforge-disk = { path = "crates/disk" }
+rustix = { version = "0.38", features = ["fs"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -8,6 +8,7 @@
 
 mod components;
 mod cpu;
+mod disk;
 mod docker;
 mod git;
 mod memory;
@@ -63,6 +64,13 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             state.network.as_ref(),
             &state.network_history,
             &ctx(PanelId::Network),
+        ),
+        ViewId::Disk => disk::render(
+            frame,
+            body,
+            state.disk.as_ref(),
+            &state.disk_history,
+            &ctx(PanelId::Disk),
         ),
     }
 
