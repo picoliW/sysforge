@@ -1,16 +1,26 @@
+//! The generic modal overlay: a titled, scrollable text view drawn on
+//! top of whatever is behind it.
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::{Clear, Paragraph};
 
-use super::components;
+use super::{RenderCtx, components};
+use crate::theme::Theme;
 use crate::ui::Overlay;
 
-pub(super) fn render(frame: &mut Frame, overlay: &Overlay) {
+/// Renders the overlay centered over the frame. An open overlay always
+/// has focus.
+pub(super) fn render(frame: &mut Frame, overlay: &Overlay, theme: &Theme) {
+    let ctx = RenderCtx {
+        theme,
+        focused: true,
+    };
     let area = centered(frame.area(), 84, 80);
     frame.render_widget(Clear, area);
 
     let block =
-        components::panel_block(&overlay.title, true).title_bottom(" Esc close · ↑/↓ scroll ");
+        components::panel_block(&overlay.title, &ctx).title_bottom(" Esc close · ↑/↓ scroll ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -20,6 +30,7 @@ pub(super) fn render(frame: &mut Frame, overlay: &Overlay) {
     );
 }
 
+/// A rect covering the given percentages of `area`, centered.
 fn centered(area: Rect, width_pct: u16, height_pct: u16) -> Rect {
     let [_, mid, _] = Layout::vertical([
         Constraint::Percentage((100 - height_pct) / 2),

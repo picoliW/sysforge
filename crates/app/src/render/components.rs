@@ -1,40 +1,50 @@
+//! Small visual building blocks shared by the panels.
+
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, Borders, Gauge, Sparkline};
 
+use super::RenderCtx;
 use crate::history::History;
+use crate::theme::Theme;
 
-pub(super) fn panel_block(title: &str, focused: bool) -> Block<'_> {
-    let border = if focused {
-        Style::default().fg(Color::Cyan)
+/// Standard SysForge panel frame; the focused panel gets the accent
+/// border, unfocused panels recede.
+pub(super) fn panel_block<'a>(title: &'a str, ctx: &RenderCtx<'_>) -> Block<'a> {
+    let color = if ctx.focused {
+        ctx.theme.accent
     } else {
-        Style::default().fg(Color::DarkGray)
+        ctx.theme.border
     };
     Block::default()
         .title(title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(border)
+        .border_style(Style::default().fg(color))
 }
 
-pub(super) fn percent_gauge(percent: f64) -> Gauge<'static> {
+/// Standard percentage gauge.
+pub(super) fn percent_gauge(percent: f64, theme: &Theme) -> Gauge<'static> {
     Gauge::default()
         .ratio((percent / 100.0).clamp(0.0, 1.0))
         .label(format!("{percent:.1}%"))
-        .gauge_style(Style::default().fg(Color::Cyan))
+        .gauge_style(Style::default().fg(theme.accent))
 }
 
-pub(super) fn sparkline(frame: &mut Frame, area: Rect, history: &History) {
+/// Percentage sparkline with a fixed 0–100 scale, newest sample at the
+/// right edge.
+pub(super) fn sparkline(frame: &mut Frame, area: Rect, history: &History, theme: &Theme) {
     let data = history.last(area.width as usize);
     let spark = Sparkline::default()
         .data(&data)
-        .max(100)
-        .style(Style::default().fg(Color::Cyan));
+        .max(100) // fixed scale: idle noise must not look like mountains
+        .style(Style::default().fg(theme.accent));
     frame.render_widget(spark, area);
 }
 
-#[allow(clippy::cast_precision_loss)]
+/// Human-readable binary units (KiB, MiB, GiB...).
+#[allow(clippy::cast_precision_loss)] // byte counts are far below f64 precision loss
 pub(super) fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
     let mut value = bytes as f64;

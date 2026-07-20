@@ -1,19 +1,22 @@
+//! The memory panel.
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::Paragraph;
 use sysforge_system::memory::MemorySnapshot;
 
-use super::components;
+use super::{RenderCtx, components};
 use crate::history::History;
 
+/// Renders the memory panel: usage gauge, details and history sparkline.
 pub(super) fn render(
     frame: &mut Frame,
     area: Rect,
     memory: Option<MemorySnapshot>,
     history: &History,
-    focused: bool,
+    ctx: &RenderCtx<'_>,
 ) {
-    let block = components::panel_block(" Memory [2] ", focused);
+    let block = components::panel_block(" Memory [2] ", ctx);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -31,7 +34,10 @@ pub(super) fn render(
             .spacing(2)
             .areas(top_area);
 
-    frame.render_widget(components::percent_gauge(mem.used_percent()), gauge_area);
+    frame.render_widget(
+        components::percent_gauge(mem.used_percent(), ctx.theme),
+        gauge_area,
+    );
     frame.render_widget(
         Paragraph::new(format!(
             "used {} / {}   swap {} / {}",
@@ -43,5 +49,5 @@ pub(super) fn render(
         details_area,
     );
 
-    components::sparkline(frame, spark_area, history);
+    components::sparkline(frame, spark_area, history, ctx.theme);
 }

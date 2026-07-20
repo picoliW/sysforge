@@ -15,7 +15,7 @@ sysforge-common = { path = "crates/common" }
 anyhow = "1"
 crossterm = { version = "0.28", features = ["event-stream"] }
 futures = "0.3"
-ratatui = "0.29"
+ratatui = { version = "0.29", features = ["serde"] }
 tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
 sysforge-system = { path = "crates/system" }
 thiserror = "2"

@@ -59,28 +59,27 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
 
     loop {
         tokio::select! {
-            _ = frame_timer.tick() => {
-                let snapshot = state.read().map(|s| s.clone()).unwrap_or_default();
-                terminal.draw(|frame| render::render(frame, &snapshot, &ui))?;
-            }
-            Some(event) = ui_events.recv() => {
-                ui.apply_event(event);
-            }
-            Some(Ok(event)) = events.next() => {
-                if let Event::Key(key) = event {
-                    if let Some(action) = input::action_for(key) {
-                        if action == Action::Quit {
-                            return Ok(());
-                        }
-                        let snapshot =
-                            state.read().map(|s| s.clone()).unwrap_or_default();
-                        if let Some(command) = ui.handle(action, &snapshot) {
-                            execute(command, config, ui_events_tx.clone());
+                    _ = frame_timer.tick() => {
+                        let snapshot = state.read().map(|s| s.clone()).unwrap_or_default();
+        terminal.draw(|frame| render::render(frame, &snapshot, &ui, &config.theme))?;            }
+                    Some(event) = ui_events.recv() => {
+                        ui.apply_event(event);
+                    }
+                    Some(Ok(event)) = events.next() => {
+                        if let Event::Key(key) = event {
+                            if let Some(action) = input::action_for(key) {
+                                if action == Action::Quit {
+                                    return Ok(());
+                                }
+                                let snapshot =
+                                    state.read().map(|s| s.clone()).unwrap_or_default();
+                                if let Some(command) = ui.handle(action, &snapshot) {
+                                    execute(command, config, ui_events_tx.clone());
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
     }
 }
 

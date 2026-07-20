@@ -10,6 +10,7 @@ mod logging;
 mod render;
 mod state;
 mod terminal;
+mod theme;
 mod ui;
 
 use anyhow::Result;

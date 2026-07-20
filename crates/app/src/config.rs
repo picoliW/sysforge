@@ -2,6 +2,7 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::theme::Theme;
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use serde::Deserialize;
@@ -14,6 +15,7 @@ pub struct Config {
     pub history: HistoryConfig,
     pub collectors: CollectorsConfig,
     pub docker: DockerConfig,
+    pub theme: Theme,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -124,6 +126,8 @@ fn config_path() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::style::Color;
+
     use super::*;
 
     #[test]
@@ -150,5 +154,13 @@ mod tests {
     fn hostile_values_fail_validation() {
         let config: Config = toml::from_str("[ui]\nframe_interval_ms = 1\n").expect("parses");
         assert!(config.validate().is_err());
+    }
+    #[test]
+    fn theme_colors_parse_from_names_and_hex() {
+        let config: Config = toml::from_str("[theme]\naccent = \"#ff00ff\"\nsuccess = \"blue\"\n")
+            .expect("theme toml must parse");
+        assert_eq!(config.theme.accent, Color::Rgb(255, 0, 255));
+        assert_eq!(config.theme.success, Color::Blue);
+        assert_eq!(config.theme.border, Theme::default().border);
     }
 }
