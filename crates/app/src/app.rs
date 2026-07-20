@@ -17,7 +17,7 @@ use crate::history::History;
 use crate::state::{AppState, SharedState};
 use crate::terminal::Tui;
 
-const FRAME_INTERVAL: Duration = Duration::from_millis(100); 
+const FRAME_INTERVAL: Duration = Duration::from_millis(100);
 
 pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
@@ -64,17 +64,13 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     }
 }
 
-
-fn spawn_collector<C>(
-    mut collector: C,
-    state: SharedState,
-    apply: fn(&mut AppState, C::Output),
-) where
+fn spawn_collector<C>(mut collector: C, state: SharedState, apply: fn(&mut AppState, C::Output))
+where
     C: Collector,
 {
     tokio::spawn(async move {
         tracing::info!(collector = collector.name(), "collector started");
-        let mut timer = tokio::time::interval(collector.interval());        
+        let mut timer = tokio::time::interval(collector.interval());
         loop {
             timer.tick().await;
             match collector.collect().await {
@@ -152,10 +148,9 @@ fn render_memory(frame: &mut Frame, area: Rect, state: &AppState) {
         return;
     };
 
-    let [top_area, spark_area] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(1)])
-            .margin(1)
-            .areas(inner);
+    let [top_area, spark_area] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)])
+        .margin(1)
+        .areas(inner);
 
     let [gauge_area, details_area] =
         Layout::horizontal([Constraint::Percentage(40), Constraint::Min(0)])
@@ -181,7 +176,7 @@ fn render_sparkline(frame: &mut Frame, area: Rect, history: &History) {
     let data = history.last(area.width as usize);
     let spark = Sparkline::default()
         .data(&data)
-        .max(100) 
+        .max(100)
         .style(Style::default().fg(Color::Cyan));
     frame.render_widget(spark, area);
 }

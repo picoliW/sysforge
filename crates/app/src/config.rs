@@ -42,7 +42,9 @@ pub struct CollectorConfig {
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self { frame_interval_ms: 100 }
+        Self {
+            frame_interval_ms: 100,
+        }
     }
 }
 
@@ -76,8 +78,9 @@ impl Config {
     pub fn load() -> Result<Self> {
         let path = config_path()?;
         let config = match std::fs::read_to_string(&path) {
-            Ok(raw) => toml::from_str(&raw)
-                .with_context(|| format!("parsing {}", path.display()))?,
+            Ok(raw) => {
+                toml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))?
+            }
             Err(e) if e.kind() == ErrorKind::NotFound => {
                 tracing::info!(path = %path.display(), "no config file, using defaults");
                 Self::default()
@@ -127,10 +130,8 @@ mod tests {
 
     #[test]
     fn partial_file_overrides_only_what_it_mentions() {
-        let config: Config = toml::from_str(
-            "[collectors.cpu]\ninterval_ms = 2000\n",
-        )
-        .expect("partial toml must parse");
+        let config: Config = toml::from_str("[collectors.cpu]\ninterval_ms = 2000\n")
+            .expect("partial toml must parse");
         assert_eq!(config.collectors.cpu.interval_ms, 2000);
         assert_eq!(config.collectors.memory, CollectorConfig::default());
         assert_eq!(config.ui, UiConfig::default());
@@ -143,8 +144,7 @@ mod tests {
 
     #[test]
     fn hostile_values_fail_validation() {
-        let config: Config =
-            toml::from_str("[ui]\nframe_interval_ms = 1\n").expect("parses");
+        let config: Config = toml::from_str("[ui]\nframe_interval_ms = 1\n").expect("parses");
         assert!(config.validate().is_err());
     }
 }

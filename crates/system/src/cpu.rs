@@ -32,7 +32,7 @@ impl CoreTimes {
             + self.steal
     }
 
-    #[allow(clippy::cast_precision_loss)] 
+    #[allow(clippy::cast_precision_loss)]
     fn usage_since(self, earlier: Self) -> f64 {
         let total = self.total().saturating_sub(earlier.total());
         let idle = self.idle_all().saturating_sub(earlier.idle_all());
@@ -64,7 +64,10 @@ pub struct CpuCollector {
 impl CpuCollector {
     #[must_use]
     pub fn new(interval: Duration) -> Self {
-        Self { interval, previous: None }
+        Self {
+            interval,
+            previous: None,
+        }
     }
 }
 
@@ -112,7 +115,7 @@ fn parse_proc_stat(raw: &str) -> Result<CpuSample, CollectorError> {
         let mut fields = line.split_whitespace();
         let Some(label) = fields.next() else { continue };
         if !label.starts_with("cpu") {
-            break; 
+            break;
         }
         let times = parse_core_times(fields, label)?;
         if label == "cpu" {
@@ -126,7 +129,10 @@ fn parse_proc_stat(raw: &str) -> Result<CpuSample, CollectorError> {
         path: PROC_STAT,
         reason: String::from("aggregate `cpu` line missing"),
     })?;
-    Ok(CpuSample { aggregate, per_core })
+    Ok(CpuSample {
+        aggregate,
+        per_core,
+    })
 }
 
 fn parse_core_times<'a>(
@@ -148,7 +154,16 @@ fn parse_core_times<'a>(
             })?;
     }
     let [user, nice, system, idle, iowait, irq, softirq, steal] = values;
-    Ok(CoreTimes { user, nice, system, idle, iowait, irq, softirq, steal })
+    Ok(CoreTimes {
+        user,
+        nice,
+        system,
+        idle,
+        iowait,
+        irq,
+        softirq,
+        steal,
+    })
 }
 
 #[cfg(test)]
@@ -172,8 +187,20 @@ intr 12345
 
     #[test]
     fn usage_is_busy_delta_over_total_delta() {
-        let earlier = CoreTimes { user: 100, idle: 700, iowait: 100, system: 100, ..CoreTimes::default() };
-        let now = CoreTimes { user: 200, idle: 800, iowait: 100, system: 100, ..CoreTimes::default() };
+        let earlier = CoreTimes {
+            user: 100,
+            idle: 700,
+            iowait: 100,
+            system: 100,
+            ..CoreTimes::default()
+        };
+        let now = CoreTimes {
+            user: 200,
+            idle: 800,
+            iowait: 100,
+            system: 100,
+            ..CoreTimes::default()
+        };
         let usage = now.usage_since(earlier);
         assert!((usage - 50.0).abs() < f64::EPSILON);
     }

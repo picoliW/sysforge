@@ -19,7 +19,7 @@ impl MemorySnapshot {
     }
 
     #[must_use]
-    #[allow(clippy::cast_precision_loss)] 
+    #[allow(clippy::cast_precision_loss)]
     pub fn used_percent(&self) -> f64 {
         if self.total == 0 {
             return 0.0;

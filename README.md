@@ -1,0 +1,1 @@
+[![CI](https://github.com/picoliW/sysforge/actions/workflows/ci.yml/badge.svg)](https://github.com/picoliW/sysforge/actions/workflows/ci.yml)
