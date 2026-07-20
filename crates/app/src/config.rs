@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use serde::Deserialize;
+use sysforge_docker::config::DockerConfig;
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -12,6 +13,7 @@ pub struct Config {
     pub ui: UiConfig,
     pub history: HistoryConfig,
     pub collectors: CollectorsConfig,
+    pub docker: DockerConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -33,7 +35,6 @@ pub struct CollectorsConfig {
     pub cpu: CollectorConfig,
 }
 
-/// Options common to every collector.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CollectorConfig {
@@ -107,6 +108,9 @@ impl Config {
         }
         if self.history.capacity < 10 {
             bail!("history.capacity must be at least 10");
+        }
+        if self.docker.enabled && self.docker.interval_ms < 500 {
+            bail!("docker.interval_ms must be at least 500");
         }
         Ok(())
     }

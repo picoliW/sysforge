@@ -9,7 +9,10 @@ pub enum CollectorError {
     Io(#[from] std::io::Error),
 
     #[error("failed to parse {path}: {reason}")]
-    Parse { path: &'static str, reason: String },
+    Parse {
+        path: &'static str,
+        reason: String,
+    },
 }
 
 pub trait Collector: Send + 'static {
@@ -19,5 +22,7 @@ pub trait Collector: Send + 'static {
 
     fn interval(&self) -> Duration;
 
-    fn collect(&mut self) -> impl Future<Output = Result<Self::Output, CollectorError>> + Send;
+    fn collect(
+        &mut self,
+    ) -> impl Future<Output = Result<Self::Output, CollectorError>> + Send;
 }

@@ -1,0 +1,18 @@
+[package]
+name = "sysforge-docker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Docker Engine collector for SysForge"
+
+[dependencies]
+bollard.workspace = true
+serde.workspace = true
+sysforge-common.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

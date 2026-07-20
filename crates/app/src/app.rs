@@ -1,28 +1,37 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Gauge, Paragraph, Sparkline, Wrap};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, BorderType, Borders, Gauge, Paragraph, Row, Sparkline, Table, Wrap};
 use sysforge_common::collector::Collector;
+use sysforge_docker::collector::{DockerCollector, DockerStatus};
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
 
 use crate::config::Config;
 use crate::history::History;
-use crate::state::{AppState, SharedState};
+use crate::state::{AppState, DockerUiState, SharedState};
 use crate::terminal::Tui;
-
-const FRAME_INTERVAL: Duration = Duration::from_millis(100);
 
 pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
         config.history.capacity,
+        config.docker.enabled,
     )));
+
+    if config.docker.enabled {
+        spawn_collector(
+            DockerCollector::new(config.docker.clone()),
+            Arc::clone(&state),
+            |s, status| {
+                s.docker = DockerUiState::Observed(status);
+            },
+        );
+    }
 
     spawn_collector(
         MemoryCollector::new(config.collectors.memory.interval()),
@@ -100,11 +109,24 @@ fn should_quit(key: KeyEvent) -> bool {
 }
 
 fn render(frame: &mut Frame, state: &AppState) {
-    let [cpu_area, mem_area] =
-        Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
-            .areas(frame.area());
+    if state.docker == DockerUiState::Disabled {
+        let [cpu_area, mem_area] =
+            Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
+                .areas(frame.area());
+        render_cpu(frame, cpu_area, state);
+        render_memory(frame, mem_area, state);
+        return;
+    }
+
+    let [cpu_area, mem_area, docker_area] = Layout::vertical([
+        Constraint::Percentage(30),
+        Constraint::Percentage(25),
+        Constraint::Min(0),
+    ])
+    .areas(frame.area());
     render_cpu(frame, cpu_area, state);
     render_memory(frame, mem_area, state);
+    render_docker(frame, docker_area, state);
 }
 
 fn render_cpu(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -179,6 +201,65 @@ fn render_sparkline(frame: &mut Frame, area: Rect, history: &History) {
         .max(100)
         .style(Style::default().fg(Color::Cyan));
     frame.render_widget(spark, area);
+}
+
+fn render_docker(frame: &mut Frame, area: Rect, state: &AppState) {
+    let (title, body) = match &state.docker {
+        DockerUiState::Disabled => return,
+        DockerUiState::Pending => (String::from(" Docker "), None),
+        DockerUiState::Observed(DockerStatus::Unavailable { reason }) => {
+            (String::from(" Docker ─ offline "), Some(reason.clone()))
+        }
+        DockerUiState::Observed(DockerStatus::Available(snap)) => {
+            let title = format!(
+                " Docker ({}/{} running) ",
+                snap.running(),
+                snap.containers.len()
+            );
+            let block = panel_block(&title);
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+
+            let header = Row::new(["NAME", "IMAGE", "STATE", "STATUS"])
+                .style(Style::default().add_modifier(Modifier::BOLD));
+            let rows = snap.containers.iter().map(|c| {
+                let style = if c.is_running() {
+                    Style::default().fg(Color::Green)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+                Row::new([
+                    c.name.clone(),
+                    c.image.clone(),
+                    c.state.clone(),
+                    c.status.clone(),
+                ])
+                .style(style)
+            });
+            let table = Table::new(
+                rows,
+                [
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(30),
+                    Constraint::Length(10),
+                    Constraint::Min(0),
+                ],
+            )
+            .header(header)
+            .column_spacing(2);
+            frame.render_widget(table, inner);
+            return;
+        }
+    };
+
+    let block = panel_block(&title);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(
+        Paragraph::new(body.unwrap_or_else(|| String::from("sampling...")))
+            .style(Style::default().fg(Color::DarkGray)),
+        inner,
+    );
 }
 
 fn panel_block(title: &str) -> Block<'_> {
