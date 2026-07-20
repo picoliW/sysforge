@@ -1,9 +1,12 @@
 mod app;
 mod config;
 mod history;
+mod input;
 mod logging;
+mod render;
 mod state;
 mod terminal;
+mod ui;
 
 use anyhow::Result;
 
