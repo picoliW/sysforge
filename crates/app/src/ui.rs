@@ -20,7 +20,11 @@ impl PanelId {
         let position = order.iter().position(|p| *p == self).unwrap_or(0);
         let mut index = position;
         loop {
-            index = if forward { (index + 1) % len } else { (index + len - 1) % len };
+            index = if forward {
+                (index + 1) % len
+            } else {
+                (index + len - 1) % len
+            };
             let candidate = order[index];
             if candidate != Self::Docker || docker_enabled {
                 return candidate;
@@ -41,7 +45,11 @@ pub struct Overlay {
 
 impl Overlay {
     fn loading(title: String) -> Self {
-        Self { title, lines: vec![String::from("loading...")], scroll: 0 }
+        Self {
+            title,
+            lines: vec![String::from("loading...")],
+            scroll: 0,
+        }
     }
 
     fn scroll_up(&mut self) {
@@ -54,22 +62,22 @@ impl Overlay {
         self.scroll = self.scroll.saturating_add(1).min(last);
     }
     pub fn text(title: impl Into<String>, lines: Vec<String>) -> Self {
-        Self { title: title.into(), lines, scroll: 0 }
+        Self {
+            title: title.into(),
+            lines,
+            scroll: 0,
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    FetchDockerLogs {
-        id: String,
-    },
+    FetchDockerLogs { id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEvent {
-    OverlayContent {
-        lines: Vec<String>,
-    },
+    OverlayContent { lines: Vec<String> },
 }
 
 #[derive(Debug, Default)]
@@ -114,9 +122,7 @@ impl UiState {
             }
             Action::OpenLogs => {
                 if self.focus == PanelId::Docker {
-                    if let Some(container) =
-                        selected_container(state, self.docker_selected)
-                    {
+                    if let Some(container) = selected_container(state, self.docker_selected) {
                         self.overlay =
                             Some(Overlay::loading(format!(" logs: {} ", container.name)));
                         return Some(Command::FetchDockerLogs {
@@ -156,9 +162,7 @@ fn docker_rows(state: &AppState) -> usize {
 
 fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> {
     match &state.docker {
-        DockerUiState::Observed(DockerStatus::Available(snap)) => {
-            snap.containers.get(index)
-        }
+        DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.get(index),
         _ => None,
     }
 }
@@ -210,7 +214,9 @@ mod tests {
     #[test]
     fn late_content_for_closed_overlay_is_dropped() {
         let mut ui = UiState::default();
-        ui.apply_event(UiEvent::OverlayContent { lines: vec![String::from("x")] });
+        ui.apply_event(UiEvent::OverlayContent {
+            lines: vec![String::from("x")],
+        });
         assert!(ui.overlay.is_none());
     }
 }

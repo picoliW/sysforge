@@ -7,12 +7,9 @@ const TAIL_LINES: usize = 200;
 const CONNECT_TIMEOUT_SECS: u64 = 5;
 
 pub async fn fetch_logs(socket: &str, container_id: &str) -> Result<Vec<String>, String> {
-    let client = Docker::connect_with_unix(
-        socket,
-        CONNECT_TIMEOUT_SECS,
-        bollard::API_DEFAULT_VERSION,
-    )
-    .map_err(|e| format!("connect: {e}"))?;
+    let client =
+        Docker::connect_with_unix(socket, CONNECT_TIMEOUT_SECS, bollard::API_DEFAULT_VERSION)
+            .map_err(|e| format!("connect: {e}"))?;
 
     let options = LogsOptions::<String> {
         stdout: true,

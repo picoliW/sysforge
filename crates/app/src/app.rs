@@ -3,11 +3,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
-use tokio::sync::mpsc;
 use sysforge_common::collector::Collector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
+use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::input::{self, Action};
@@ -102,11 +102,8 @@ fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEv
     }
 }
 
-fn spawn_collector<C>(
-    mut collector: C,
-    state: SharedState,
-    apply: fn(&mut AppState, C::Output),
-) where
+fn spawn_collector<C>(mut collector: C, state: SharedState, apply: fn(&mut AppState, C::Output))
+where
     C: Collector,
 {
     tokio::spawn(async move {

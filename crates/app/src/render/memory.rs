@@ -22,10 +22,9 @@ pub(super) fn render(
         return;
     };
 
-    let [top_area, spark_area] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(1)])
-            .margin(1)
-            .areas(inner);
+    let [top_area, spark_area] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)])
+        .margin(1)
+        .areas(inner);
 
     let [gauge_area, details_area] =
         Layout::horizontal([Constraint::Percentage(40), Constraint::Min(0)])

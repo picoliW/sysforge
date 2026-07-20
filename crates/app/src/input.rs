@@ -135,7 +135,7 @@ const DISTINGUISHING: KeyModifiers = KeyModifiers::CONTROL.union(KeyModifiers::A
 #[must_use]
 pub fn action_for(key: KeyEvent) -> Option<Action> {
     if key.kind != KeyEventKind::Press {
-        return None; 
+        return None;
     }
     let pressed = key.modifiers.intersection(DISTINGUISHING);
     BINDINGS
@@ -150,7 +150,11 @@ pub fn help_lines() -> Vec<String> {
     for context in Context::ORDER {
         lines.push(format!("{}:", context.title()));
         for binding in BINDINGS.iter().filter(|b| b.context == context) {
-            lines.push(format!("  {:<11} {}", key_label(binding), binding.description));
+            lines.push(format!(
+                "  {:<11} {}",
+                key_label(binding),
+                binding.description
+            ));
         }
         lines.push(String::new());
     }
@@ -191,8 +195,7 @@ mod tests {
 
     #[test]
     fn shift_noise_does_not_break_matching() {
-        let question =
-            KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT);
+        let question = KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT);
         assert_eq!(action_for(question), Some(Action::OpenHelp));
         let backtab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
         assert_eq!(action_for(backtab), Some(Action::FocusPrev));
@@ -200,8 +203,7 @@ mod tests {
 
     #[test]
     fn ctrl_is_distinguishing() {
-        let ctrl_c =
-            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         assert_eq!(action_for(ctrl_c), Some(Action::Quit));
         assert_eq!(action_for(press(KeyCode::Char('c'))), None);
     }

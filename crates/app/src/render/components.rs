@@ -29,7 +29,7 @@ pub(super) fn sparkline(frame: &mut Frame, area: Rect, history: &History) {
     let data = history.last(area.width as usize);
     let spark = Sparkline::default()
         .data(&data)
-        .max(100) 
+        .max(100)
         .style(Style::default().fg(Color::Cyan));
     frame.render_widget(spark, area);
 }

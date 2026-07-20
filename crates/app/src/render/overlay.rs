@@ -9,8 +9,8 @@ pub(super) fn render(frame: &mut Frame, overlay: &Overlay) {
     let area = centered(frame.area(), 84, 80);
     frame.render_widget(Clear, area);
 
-    let block = components::panel_block(&overlay.title, true)
-        .title_bottom(" Esc close · ↑/↓ scroll ");
+    let block =
+        components::panel_block(&overlay.title, true).title_bottom(" Esc close · ↑/↓ scroll ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 

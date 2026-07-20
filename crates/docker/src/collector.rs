@@ -46,9 +46,7 @@ impl DockerSnapshot {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DockerStatus {
     Available(DockerSnapshot),
-    Unavailable {
-        reason: String,
-    },
+    Unavailable { reason: String },
 }
 
 #[derive(Debug)]
@@ -61,7 +59,11 @@ pub struct DockerCollector {
 impl DockerCollector {
     #[must_use]
     pub fn new(config: DockerConfig) -> Self {
-        Self { config, client: None, was_available: None }
+        Self {
+            config,
+            client: None,
+            was_available: None,
+        }
     }
 
     async fn try_collect(&mut self) -> Result<DockerSnapshot, String> {
@@ -81,7 +83,10 @@ impl DockerCollector {
         }
         let client = self.client.as_ref().expect("client set above");
 
-        let options = ListContainersOptions::<String> { all: true, ..Default::default() };
+        let options = ListContainersOptions::<String> {
+            all: true,
+            ..Default::default()
+        };
         let summaries = client
             .list_containers(Some(options))
             .await
@@ -150,11 +155,11 @@ async fn enrich_with_stats(client: &Docker, snapshot: &mut DockerSnapshot) {
     }
 }
 
-async fn one_shot_stats(
-    client: &Docker,
-    id: &str,
-) -> Option<(Option<f64>, Option<u64>)> {
-    let options = StatsOptions { stream: false, one_shot: false };
+async fn one_shot_stats(client: &Docker, id: &str) -> Option<(Option<f64>, Option<u64>)> {
+    let options = StatsOptions {
+        stream: false,
+        one_shot: false,
+    };
     let stats = client.stats(id, Some(options)).next().await?.ok()?;
     Some(measure(&stats))
 }
@@ -179,7 +184,7 @@ fn measure(stats: &Stats) -> (Option<f64>, Option<u64>) {
     (cpu, stats.memory_stats.usage)
 }
 
-#[allow(clippy::cast_precision_loss)] 
+#[allow(clippy::cast_precision_loss)]
 fn cpu_percent(cpu_delta: u64, system_delta: u64, online_cpus: u64) -> f64 {
     if system_delta == 0 {
         return 0.0;
