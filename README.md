@@ -1,4 +1,5 @@
 [![CI](https://github.com/picoliW/sysforge/actions/workflows/ci.yml/badge.svg)](https://github.com/picoliW/sysforge/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-github.io-blue)](https://picoliw.github.io/sysforge/)
 
 # SysForge
 
@@ -11,8 +12,6 @@ SysForge is built for Linux and WSL, in Rust, with an emphasis on clean
 architecture: every domain is an independent crate, data flows in one
 direction, and the terminal is treated as a rendering target for observed
 state rather than a place to print to.
-
-> _Screenshots: see the [Screenshots](#screenshots) section below._
 
 ## Quick start
 
@@ -209,8 +208,44 @@ CI runs formatting, clippy (warnings as errors), and the full test suite on
 every push and pull request.
 
 ## Screenshots
+<p align="center">
+  <img src="docs/media/demo.gif" alt="SysForge live demo" width="820">
+</p>
 
-_To be added._
+### Overview — every domain at a glance
+
+CPU and memory gauges with live sparklines, running containers, and the top
+processes, all on one screen and updating in real time.
+
+![Overview](docs/media/overview.png)
+
+### Docker — containers in full screen
+
+Per-container CPU and memory, state and uptime; select a row and press `l`
+for its logs.
+
+![Docker view](docs/media/docker.png)
+
+### Processes — top by CPU
+
+Sampled from `/proc`, sorted live, showing the 20 heaviest of every process
+on the system.
+
+![Processes view](docs/media/processes.png)
+
+### Git — the working repository
+
+Current branch, working-tree status, and recent commits of the directory
+SysForge is launched from.
+
+![Git view](docs/media/git.png)
+
+### Network — per-interface throughput
+
+Download and upload rates per interface, each with its own traffic
+sparkline; busiest interfaces float to the top.
+
+![Network view](docs/media/network.png)
 
 ## Roadmap
 
