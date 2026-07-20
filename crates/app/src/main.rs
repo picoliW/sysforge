@@ -1,3 +1,7 @@
+//! SysForge entry point: installs logging and the panic hook, loads
+//! configuration, builds the terminal guard and hands control to the
+//! application loop.
+
 mod app;
 mod config;
 mod history;

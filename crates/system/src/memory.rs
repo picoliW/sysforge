@@ -1,3 +1,5 @@
+//! Memory sampling via `/proc/meminfo`.
+
 use std::time::Duration;
 
 use sysforge_common::collector::{Collector, CollectorError};
@@ -5,21 +7,28 @@ use sysforge_common::collector::{Collector, CollectorError};
 const MEMINFO: &str = "/proc/meminfo";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// One reading of the system's memory state. All values in **bytes**.
 pub struct MemorySnapshot {
+    /// Total installed RAM (`MemTotal`).
     pub total: u64,
+    /// Memory available for new workloads (`MemAvailable`).
     pub available: u64,
+    /// Total swap space (`SwapTotal`).
     pub swap_total: u64,
+    /// Unused swap space (`SwapFree`).
     pub swap_free: u64,
 }
 
 impl MemorySnapshot {
     #[must_use]
+    /// Memory in use: total minus *available*, not minus free.
     pub fn used(&self) -> u64 {
         self.total.saturating_sub(self.available)
     }
 
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
+    /// Used memory as a percentage of total, `0.0..=100.0`.
     pub fn used_percent(&self) -> f64 {
         if self.total == 0 {
             return 0.0;
@@ -28,18 +37,21 @@ impl MemorySnapshot {
     }
 
     #[must_use]
+    /// Swap in use.
     pub fn swap_used(&self) -> u64 {
         self.swap_total.saturating_sub(self.swap_free)
     }
 }
 
 #[derive(Debug)]
+/// Samples `/proc/meminfo` at a configurable interval.
 pub struct MemoryCollector {
     interval: Duration,
 }
 
 impl MemoryCollector {
     #[must_use]
+    /// Creates a collector sampling at the given interval.
     pub fn new(interval: Duration) -> Self {
         Self { interval }
     }

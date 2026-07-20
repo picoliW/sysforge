@@ -1,3 +1,5 @@
+//! Container listing and per-container stats via the Docker Engine API.
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -11,52 +13,82 @@ use sysforge_common::collector::{Collector, CollectorError};
 
 use crate::config::DockerConfig;
 
+/// Seconds bollard waits for the daemon before giving up.
 const CONNECT_TIMEOUT_SECS: u64 = 5;
 
+/// (cpu %, memory bytes) as measured for one running container.
+type Measured = (Option<f64>, Option<u64>);
+
+/// One container as shown in the UI.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContainerInfo {
+    /// Engine identifier, used for stats and log lookups.
     pub id: String,
+    /// Container name without the API's leading slash.
     pub name: String,
+    /// Image the container was created from.
     pub image: String,
+    /// Machine state: `running`, `exited`, `paused`, ...
     pub state: String,
+    /// Human status: "Up 3 hours", "Exited (0) 2 days ago", ...
     pub status: String,
+    /// CPU utilization; may exceed 100% (one full core = 100%).
+    /// `None` for containers that are not running.
     pub cpu_percent: Option<f64>,
+    /// Memory in use, in bytes. `None` when not running.
     pub memory_usage: Option<u64>,
 }
 
 impl ContainerInfo {
+    /// Whether the container is currently running.
     #[must_use]
     pub fn is_running(&self) -> bool {
         self.state == "running"
     }
 }
 
+/// One reading of the Docker Engine.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DockerSnapshot {
+    /// All containers (running or not), running first, then by name.
     pub containers: Vec<ContainerInfo>,
 }
 
 impl DockerSnapshot {
+    /// How many containers are running.
     #[must_use]
     pub fn running(&self) -> usize {
         self.containers.iter().filter(|c| c.is_running()).count()
     }
 }
 
+/// What the collector observed about the Docker domain.
+///
+/// `Unavailable` is a *valid observation*, not an error: a stopped
+/// daemon is a true fact about the system, and the UI renders it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DockerStatus {
+    /// The engine answered.
     Available(DockerSnapshot),
-    Unavailable { reason: String },
+    /// The engine could not be reached.
+    Unavailable {
+        /// Short human-readable cause.
+        reason: String,
+    },
 }
 
+/// Samples the Docker Engine at a configurable interval.
 #[derive(Debug)]
 pub struct DockerCollector {
     config: DockerConfig,
     client: Option<Docker>,
+    /// Last known availability, so only *transitions* are logged.
     was_available: Option<bool>,
 }
 
 impl DockerCollector {
+    /// Creates a collector from its configuration. No connection is
+    /// attempted here: the socket may legitimately not exist yet.
     #[must_use]
     pub fn new(config: DockerConfig) -> Self {
         Self {
@@ -135,6 +167,9 @@ impl Collector for DockerCollector {
     }
 }
 
+/// Fetches stats for every running container concurrently and fills
+/// the snapshot in place. Failures leave the fields `None`: a container
+/// that died mid-tick must not take the whole sample down.
 async fn enrich_with_stats(client: &Docker, snapshot: &mut DockerSnapshot) {
     let lookups = snapshot
         .containers
@@ -144,9 +179,7 @@ async fn enrich_with_stats(client: &Docker, snapshot: &mut DockerSnapshot) {
             let id = c.id.clone();
             async move { (id.clone(), one_shot_stats(client, &id).await) }
         });
-    let results: HashMap<String, Option<(Option<f64>, Option<u64>)>> =
-        join_all(lookups).await.into_iter().collect();
-
+    let results: HashMap<String, Option<Measured>> = join_all(lookups).await.into_iter().collect();
     for container in &mut snapshot.containers {
         if let Some(Some((cpu, memory))) = results.get(&container.id) {
             container.cpu_percent = *cpu;
@@ -155,7 +188,11 @@ async fn enrich_with_stats(client: &Docker, snapshot: &mut DockerSnapshot) {
     }
 }
 
-async fn one_shot_stats(client: &Docker, id: &str) -> Option<(Option<f64>, Option<u64>)> {
+/// One stats reading. With `stream: false` the daemon collects two
+/// samples internally and returns a single object carrying both
+/// `cpu_stats` and `precpu_stats` — the delta arrives ready-made, and
+/// the `Stream` never leaks past this function.
+async fn one_shot_stats(client: &Docker, id: &str) -> Option<Measured> {
     let options = StatsOptions {
         stream: false,
         one_shot: false,
@@ -164,7 +201,8 @@ async fn one_shot_stats(client: &Docker, id: &str) -> Option<(Option<f64>, Optio
     Some(measure(&stats))
 }
 
-fn measure(stats: &Stats) -> (Option<f64>, Option<u64>) {
+/// Extracts (cpu%, memory bytes) from a raw stats object.
+fn measure(stats: &Stats) -> Measured {
     let cpu = match (
         stats.cpu_stats.system_cpu_usage,
         stats.precpu_stats.system_cpu_usage,
@@ -184,7 +222,9 @@ fn measure(stats: &Stats) -> (Option<f64>, Option<u64>) {
     (cpu, stats.memory_stats.usage)
 }
 
-#[allow(clippy::cast_precision_loss)]
+/// The formula `docker stats` itself uses. May exceed 100%: a container
+/// saturating two cores reads 200%.
+#[allow(clippy::cast_precision_loss)] // nanosecond deltas are far below f64 precision loss
 fn cpu_percent(cpu_delta: u64, system_delta: u64, online_cpus: u64) -> f64 {
     if system_delta == 0 {
         return 0.0;
@@ -192,17 +232,17 @@ fn cpu_percent(cpu_delta: u64, system_delta: u64, online_cpus: u64) -> f64 {
     cpu_delta as f64 / system_delta as f64 * online_cpus as f64 * 100.0
 }
 
+/// Pure mapping from API models to UI-ready data, unit-testable
+/// without a daemon.
 fn snapshot_from(summaries: Vec<ContainerSummary>) -> DockerSnapshot {
     let mut containers: Vec<ContainerInfo> = summaries
         .into_iter()
         .map(|s| ContainerInfo {
             id: s.id.unwrap_or_default(),
-            name: s
-                .names
-                .unwrap_or_default()
-                .first()
-                .map(|n| n.trim_start_matches('/').to_owned())
-                .unwrap_or_else(|| String::from("<unnamed>")),
+            name: s.names.unwrap_or_default().first().map_or_else(
+                || String::from("<unnamed>"),
+                |n| n.trim_start_matches('/').to_owned(),
+            ),
             image: s.image.unwrap_or_default(),
             state: s.state.unwrap_or_default(),
             status: s.status.unwrap_or_default(),
@@ -253,6 +293,7 @@ mod tests {
 
     #[test]
     fn cpu_percent_follows_docker_cli_formula() {
+        // container consumed 10% of the system delta on a 4-cpu host
         let pct = cpu_percent(100, 1_000, 4);
         assert!((pct - 40.0).abs() < f64::EPSILON);
     }

@@ -1,3 +1,5 @@
+//! CPU sampling via `/proc/stat`.
+
 use std::time::Duration;
 
 use sysforge_common::collector::{Collector, CollectorError};
@@ -50,12 +52,17 @@ struct CpuSample {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+/// CPU state ready for the UI: percentages, not jiffies.
 pub struct CpuSnapshot {
+    /// Aggregate utilization across all cores, `0.0..=100.0`.
     pub total: f64,
+    /// Utilization per core, indexed as the kernel numbers them.
     pub per_core: Vec<f64>,
 }
 
 #[derive(Debug)]
+/// Samples `/proc/stat` at a configurable interval, deriving
+/// utilization from the delta against the previous reading.
 pub struct CpuCollector {
     interval: Duration,
     previous: Option<CpuSample>,
@@ -63,6 +70,7 @@ pub struct CpuCollector {
 
 impl CpuCollector {
     #[must_use]
+    /// Creates a collector sampling at the given interval.
     pub fn new(interval: Duration) -> Self {
         Self {
             interval,
