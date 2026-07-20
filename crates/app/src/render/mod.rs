@@ -11,6 +11,7 @@ mod cpu;
 mod docker;
 mod memory;
 mod overlay;
+mod processes;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
@@ -54,9 +55,10 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             &ctx(PanelId::Memory),
         );
     } else {
-        let [cpu_area, mem_area, docker_area] = Layout::vertical([
+        let [cpu_area, mem_area, docker_area, proc_area] = Layout::vertical([
+            Constraint::Percentage(20),
+            Constraint::Percentage(18),
             Constraint::Percentage(30),
-            Constraint::Percentage(25),
             Constraint::Min(0),
         ])
         .areas(frame.area());
@@ -80,6 +82,13 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             &state.docker,
             ui.docker_selected,
             &ctx(PanelId::Docker),
+        );
+        processes::render(
+            frame,
+            proc_area,
+            state.processes.as_ref(),
+            ui.processes_selected,
+            &ctx(PanelId::Processes),
         );
     }
 

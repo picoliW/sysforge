@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 use sysforge_docker::collector::DockerStatus;
 use sysforge_system::cpu::CpuSnapshot;
 use sysforge_system::memory::MemorySnapshot;
+use sysforge_system::process::ProcessSnapshot;
 
 use crate::history::History;
 
@@ -21,6 +22,8 @@ pub struct AppState {
     pub docker: DockerUiState,
     pub memory: Option<MemorySnapshot>,
     pub memory_history: History,
+    /// Latest process table reading, `None` until the first sample.
+    pub processes: Option<ProcessSnapshot>,
 }
 
 impl AppState {
@@ -36,6 +39,7 @@ impl AppState {
             },
             memory: None,
             memory_history: History::new(history_capacity),
+            processes: None,
         }
     }
 }

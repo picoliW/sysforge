@@ -7,6 +7,7 @@ use sysforge_common::collector::Collector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
+use sysforge_system::process::ProcessCollector;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
@@ -39,6 +40,14 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
                 s.cpu_history.push_percent(snap.total);
                 s.cpu = Some(snap);
             }
+        },
+    );
+
+    spawn_collector(
+        ProcessCollector::new(config.collectors.processes.interval()),
+        Arc::clone(&state),
+        |s, snap| {
+            s.processes = Some(snap);
         },
     );
 

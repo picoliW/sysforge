@@ -128,6 +128,13 @@ const BINDINGS: &[Binding] = &[
         context: Context::Docker,
         description: "logs of the selected container",
     },
+    Binding {
+        code: KeyCode::Char('4'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::FocusPanel(PanelId::Processes),
+        context: Context::Navigation,
+        description: "focus processes panel",
+    },
 ];
 
 const DISTINGUISHING: KeyModifiers = KeyModifiers::CONTROL.union(KeyModifiers::ALT);

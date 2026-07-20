@@ -9,11 +9,11 @@ pub enum PanelId {
     Cpu,
     Memory,
     Docker,
+    Processes,
 }
 
 impl PanelId {
-    const ORDER: [Self; 3] = [Self::Cpu, Self::Memory, Self::Docker];
-
+    const ORDER: [Self; 4] = [Self::Cpu, Self::Memory, Self::Docker, Self::Processes];
     fn step(self, forward: bool, docker_enabled: bool) -> Self {
         let order = Self::ORDER;
         let len = order.len();
@@ -84,6 +84,8 @@ pub enum UiEvent {
 pub struct UiState {
     pub focus: PanelId,
     pub docker_selected: usize,
+    pub processes_selected: usize,
+
     pub overlay: Option<Overlay>,
 }
 
@@ -109,17 +111,24 @@ impl UiState {
                     self.focus = panel;
                 }
             }
-            Action::SelectionUp => {
-                if self.focus == PanelId::Docker {
+            Action::SelectionUp => match self.focus {
+                PanelId::Docker => {
                     self.docker_selected = self.docker_selected.saturating_sub(1);
                 }
-            }
-            Action::SelectionDown => {
-                if self.focus == PanelId::Docker {
-                    let last = docker_rows(state).saturating_sub(1);
-                    self.docker_selected = (self.docker_selected + 1).min(last);
+                PanelId::Processes => {
+                    self.processes_selected = self.processes_selected.saturating_sub(1);
                 }
-            }
+                _ => {}
+            },
+            Action::SelectionDown => match self.focus {
+                PanelId::Docker => {
+                    self.docker_selected = self.docker_selected.saturating_add(1);
+                }
+                PanelId::Processes => {
+                    self.processes_selected = self.processes_selected.saturating_add(1);
+                }
+                _ => {}
+            },
             Action::OpenLogs => {
                 if self.focus == PanelId::Docker {
                     if let Some(container) = selected_container(state, self.docker_selected) {
@@ -138,6 +147,9 @@ impl UiState {
         self.docker_selected = self
             .docker_selected
             .min(docker_rows(state).saturating_sub(1));
+        self.processes_selected = self
+            .processes_selected
+            .min(process_rows(state).saturating_sub(1));
         None
     }
 
@@ -160,6 +172,11 @@ fn docker_rows(state: &AppState) -> usize {
     }
 }
 
+/// How many rows the processes table currently has.
+fn process_rows(state: &AppState) -> usize {
+    state.processes.as_ref().map_or(0, |s| s.processes.len())
+}
+
 fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> {
     match &state.docker {
         DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.get(index),
@@ -177,6 +194,8 @@ mod tests {
         let mut state = AppState::new(10, false);
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::FocusNext, &state);
+        ui.handle(Action::FocusNext, &state);
+        assert_eq!(ui.focus, PanelId::Processes);
         ui.handle(Action::FocusNext, &state);
         assert_eq!(ui.focus, PanelId::Cpu);
     }

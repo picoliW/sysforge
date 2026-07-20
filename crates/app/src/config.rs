@@ -35,6 +35,8 @@ pub struct HistoryConfig {
 pub struct CollectorsConfig {
     pub memory: CollectorConfig,
     pub cpu: CollectorConfig,
+    /// Process collector (`[collectors.processes]`).
+    pub processes: CollectorConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -103,6 +105,7 @@ impl Config {
         for (name, collector) in [
             ("memory", &self.collectors.memory),
             ("cpu", &self.collectors.cpu),
+            ("processes", &self.collectors.processes),
         ] {
             if collector.interval_ms < 100 {
                 bail!("collectors.{name}.interval_ms must be at least 100");
