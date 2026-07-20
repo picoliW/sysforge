@@ -1,6 +1,7 @@
 //! The `[network]` section of the user configuration.
 
 use serde::Deserialize;
+use std::time::Duration;
 
 /// Network collector options (`[network]`).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -24,7 +25,7 @@ impl Default for NetworkConfig {
 impl NetworkConfig {
     /// Sampling interval as a [`Duration`].
     #[must_use]
-    pub fn interval(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.interval_ms)
+    pub fn interval(&self) -> Duration {
+        Duration::from_millis(self.interval_ms)
     }
 }
