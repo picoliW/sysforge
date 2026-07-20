@@ -55,9 +55,23 @@ pub struct CpuSnapshot {
     pub per_core: Vec<f64>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CpuCollector {
+    interval: Duration,
     previous: Option<CpuSample>,
+}
+
+impl CpuCollector {
+    #[must_use]
+    pub fn new(interval: Duration) -> Self {
+        Self { interval, previous: None }
+    }
+}
+
+impl Default for CpuCollector {
+    fn default() -> Self {
+        Self::new(Duration::from_secs(1))
+    }
 }
 
 impl Collector for CpuCollector {
@@ -68,7 +82,7 @@ impl Collector for CpuCollector {
     }
 
     fn interval(&self) -> Duration {
-        Duration::from_secs(1)
+        self.interval
     }
 
     async fn collect(&mut self) -> Result<Self::Output, CollectorError> {
@@ -159,7 +173,6 @@ intr 12345
     #[test]
     fn usage_is_busy_delta_over_total_delta() {
         let earlier = CoreTimes { user: 100, idle: 700, iowait: 100, system: 100, ..CoreTimes::default() };
-        // +100 busy (user), +100 idle => 50% over this window.
         let now = CoreTimes { user: 200, idle: 800, iowait: 100, system: 100, ..CoreTimes::default() };
         let usage = now.usage_since(earlier);
         assert!((usage - 50.0).abs() < f64::EPSILON);

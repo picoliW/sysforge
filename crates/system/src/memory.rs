@@ -33,8 +33,23 @@ impl MemorySnapshot {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct MemoryCollector;
+#[derive(Debug)]
+pub struct MemoryCollector {
+    interval: Duration,
+}
+
+impl MemoryCollector {
+    #[must_use]
+    pub fn new(interval: Duration) -> Self {
+        Self { interval }
+    }
+}
+
+impl Default for MemoryCollector {
+    fn default() -> Self {
+        Self::new(Duration::from_secs(1))
+    }
+}
 
 impl Collector for MemoryCollector {
     type Output = MemorySnapshot;
@@ -44,7 +59,7 @@ impl Collector for MemoryCollector {
     }
 
     fn interval(&self) -> Duration {
-        Duration::from_secs(1)
+        self.interval
     }
 
     async fn collect(&mut self) -> Result<MemorySnapshot, CollectorError> {

@@ -5,43 +5,54 @@ use anyhow::Result;
 use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Gauge, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Gauge, Paragraph, Sparkline, Wrap};
 use sysforge_common::collector::Collector;
-use sysforge_system::memory::{MemoryCollector, MemorySnapshot};
-use sysforge_system::cpu::{CpuCollector, CpuSnapshot};
+use sysforge_system::cpu::CpuCollector;
+use sysforge_system::memory::MemoryCollector;
 
+use crate::config::Config;
+use crate::history::History;
 use crate::state::{AppState, SharedState};
 use crate::terminal::Tui;
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(100); 
 
-pub async fn run(terminal: &mut Tui) -> Result<()> {
-    let state: SharedState = Arc::default();
+pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
+    let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
+        config.history.capacity,
+    )));
 
-    spawn_collector(MemoryCollector, Arc::clone(&state), |s, snap| {
-        s.memory = Some(snap);
-    });
+    spawn_collector(
+        MemoryCollector::new(config.collectors.memory.interval()),
+        Arc::clone(&state),
+        |s, snap| {
+            s.memory_history.push_percent(snap.used_percent());
+            s.memory = Some(snap);
+        },
+    );
 
-    spawn_collector(CpuCollector::default(), Arc::clone(&state), |s, snap| {
-        if let Some(snap) = snap {
-            s.cpu = Some(snap);
-        }
-    });
+    spawn_collector(
+        CpuCollector::new(config.collectors.cpu.interval()),
+        Arc::clone(&state),
+        |s, snap| {
+            if let Some(snap) = snap {
+                s.cpu_history.push_percent(snap.total);
+                s.cpu = Some(snap);
+            }
+        },
+    );
 
     let mut events = EventStream::new();
-    let mut frame_timer = tokio::time::interval(FRAME_INTERVAL);
+    let mut frame_timer = tokio::time::interval(config.ui.frame_interval());
 
     loop {
         tokio::select! {
             _ = frame_timer.tick() => {
-                let (cpu, memory) = state
-                    .read()
-                    .map(|s| (s.cpu.clone(), s.memory))
-                    .unwrap_or_default();
-                terminal.draw(|frame| render(frame, cpu.as_ref(), memory))?;
-            }
+                            let snapshot = state.read().map(|s| s.clone()).unwrap_or_default();
+                            terminal.draw(|frame| render(frame, &snapshot))?;
+                        }
             Some(Ok(event)) = events.next() => {
                 if let Event::Key(key) = event {
                     if should_quit(key) {
@@ -92,30 +103,34 @@ fn should_quit(key: KeyEvent) -> bool {
         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
-fn render(frame: &mut Frame, cpu: Option<&CpuSnapshot>, memory: Option<MemorySnapshot>) {
+fn render(frame: &mut Frame, state: &AppState) {
     let [cpu_area, mem_area] =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(4)])
+        Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
             .areas(frame.area());
-    render_cpu(frame, cpu_area, cpu);
-    render_memory(frame, mem_area, memory);
+    render_cpu(frame, cpu_area, state);
+    render_memory(frame, mem_area, state);
 }
 
-fn render_cpu(frame: &mut Frame, area: ratatui::layout::Rect, cpu: Option<&CpuSnapshot>) {
+fn render_cpu(frame: &mut Frame, area: Rect, state: &AppState) {
     let block = panel_block(" CPU ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let Some(cpu) = cpu else {
+    let Some(cpu) = &state.cpu else {
         frame.render_widget(Paragraph::new("sampling..."), inner);
         return;
     };
 
-    let [gauge_area, cores_area] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-            .margin(1)
-            .areas(inner);
+    let [gauge_area, spark_area, cores_area] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .margin(1)
+    .areas(inner);
 
     frame.render_widget(percent_gauge(cpu.total), gauge_area);
+    render_sparkline(frame, spark_area, &state.cpu_history);
 
     let cores = cpu
         .per_core
@@ -124,37 +139,51 @@ fn render_cpu(frame: &mut Frame, area: ratatui::layout::Rect, cpu: Option<&CpuSn
         .map(|(i, pct)| format!("c{i:02} {pct:5.1}%"))
         .collect::<Vec<_>>()
         .join("   ");
-    frame.render_widget(
-        Paragraph::new(cores).wrap(ratatui::widgets::Wrap { trim: true }),
-        cores_area,
-    );
+    frame.render_widget(Paragraph::new(cores).wrap(Wrap { trim: true }), cores_area);
 }
 
-fn render_memory(frame: &mut Frame, area: ratatui::layout::Rect, memory: Option<MemorySnapshot>) {
+fn render_memory(frame: &mut Frame, area: Rect, state: &AppState) {
     let block = panel_block(" Memory ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let Some(mem) = memory else {
+    let Some(mem) = state.memory else {
         frame.render_widget(Paragraph::new("sampling..."), inner);
         return;
     };
 
+    let [top_area, spark_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(1)])
+            .margin(1)
+            .areas(inner);
+
     let [gauge_area, details_area] =
         Layout::horizontal([Constraint::Percentage(40), Constraint::Min(0)])
             .spacing(2)
-            .areas(inner);
+            .areas(top_area);
 
     frame.render_widget(percent_gauge(mem.used_percent()), gauge_area);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "used {} / {}   swap {} / {}",
+            format_bytes(mem.used()),
+            format_bytes(mem.total),
+            format_bytes(mem.swap_used()),
+            format_bytes(mem.swap_total),
+        )),
+        details_area,
+    );
 
-    let details = Paragraph::new(format!(
-        "used {} / {}   swap {} / {}",
-        format_bytes(mem.used()),
-        format_bytes(mem.total),
-        format_bytes(mem.swap_used()),
-        format_bytes(mem.swap_total),
-    ));
-    frame.render_widget(details, details_area);
+    render_sparkline(frame, spark_area, &state.memory_history);
+}
+
+fn render_sparkline(frame: &mut Frame, area: Rect, history: &History) {
+    let data = history.last(area.width as usize);
+    let spark = Sparkline::default()
+        .data(&data)
+        .max(100) 
+        .style(Style::default().fg(Color::Cyan));
+    frame.render_widget(spark, area);
 }
 
 fn panel_block(title: &str) -> Block<'_> {
