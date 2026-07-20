@@ -6,12 +6,15 @@ use futures::StreamExt;
 use sysforge_common::collector::Collector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_git::collector::GitCollector;
+use sysforge_network::collector::NetworkCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
 use sysforge_system::process::ProcessCollector;
+
 use tokio::sync::mpsc;
 
 use crate::config::Config;
+use crate::history::History;
 use crate::input::{self, Action};
 use crate::render;
 use crate::state::{AppState, DockerUiState, GitUiState, SharedState};
@@ -73,6 +76,23 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
         );
     }
 
+    if config.network.enabled {
+        let capacity = config.history.capacity;
+        spawn_collector(
+            NetworkCollector::new(config.network.interval()),
+            Arc::clone(&state),
+            move |s, snap| {
+                for iface in &snap.interfaces {
+                    s.network_history
+                        .entry(iface.name.clone())
+                        .or_insert_with(|| History::new(capacity))
+                        .push_rate(iface.total_rate());
+                }
+                s.network = Some(snap);
+            },
+        );
+    }
+
     let (ui_events_tx, mut ui_events) = mpsc::unbounded_channel::<UiEvent>();
     let mut ui = UiState::default();
     let mut events = EventStream::new();
@@ -122,9 +142,10 @@ fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEv
     }
 }
 
-fn spawn_collector<C>(mut collector: C, state: SharedState, apply: fn(&mut AppState, C::Output))
+fn spawn_collector<C, F>(mut collector: C, state: SharedState, apply: F)
 where
     C: Collector,
+    F: Fn(&mut AppState, C::Output) + Send + 'static,
 {
     tokio::spawn(async move {
         tracing::info!(collector = collector.name(), "collector started");

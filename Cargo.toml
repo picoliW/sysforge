@@ -28,6 +28,7 @@ toml = "0.8"
 bollard = "0.18"
 sysforge-docker = { path = "crates/docker" }
 sysforge-git = { path = "crates/git" }
+sysforge-network = { path = "crates/network" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -28,6 +28,7 @@ serde.workspace = true
 toml.workspace = true
 sysforge-docker.workspace = true
 sysforge-git.workspace = true
+sysforge-network.workspace = true
 
 [lints]
 workspace = true

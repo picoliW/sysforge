@@ -128,6 +128,13 @@ const BINDINGS: &[Binding] = &[
         description: "git view",
     },
     Binding {
+        code: KeyCode::Char('5'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Network),
+        context: Context::Views,
+        description: "network view",
+    },
+    Binding {
         code: KeyCode::Tab,
         modifiers: KeyModifiers::NONE,
         action: Action::FocusNext,

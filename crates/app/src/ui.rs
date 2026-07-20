@@ -14,36 +14,35 @@ use crate::state::{AppState, DockerUiState};
 /// The reusable panels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PanelId {
-    /// CPU panel.
     #[default]
     Cpu,
-    /// Memory panel.
     Memory,
-    /// Docker panel.
     Docker,
-    /// Processes panel.
     Processes,
-    /// Git panel.
     Git,
+    Network,
 }
 
 /// The full screens of the application.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ViewId {
-    /// Summary of every domain (`1`).
     #[default]
     Overview,
-    /// Docker, full screen (`2`).
     Docker,
-    /// Processes, full screen (`3`).
     Processes,
-    /// Git, full screen (`4`).
     Git,
+    Network,
 }
 
 impl ViewId {
     /// Every view, in switch-key order.
-    pub const ALL: [Self; 4] = [Self::Overview, Self::Docker, Self::Processes, Self::Git];
+    pub const ALL: [Self; 5] = [
+        Self::Overview,
+        Self::Docker,
+        Self::Processes,
+        Self::Git,
+        Self::Network,
+    ];
 
     /// Title shown in the view bar.
     #[must_use]
@@ -53,6 +52,7 @@ impl ViewId {
             Self::Docker => "docker",
             Self::Processes => "processes",
             Self::Git => "git",
+            Self::Network => "network",
         }
     }
 
@@ -69,6 +69,7 @@ impl ViewId {
             (Self::Docker, _) => &[PanelId::Docker],
             (Self::Processes, _) => &[PanelId::Processes],
             (Self::Git, _) => &[PanelId::Git],
+            (Self::Network, _) => &[PanelId::Network],
         }
     }
 }

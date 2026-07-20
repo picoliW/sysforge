@@ -8,6 +8,7 @@ use directories::ProjectDirs;
 use serde::Deserialize;
 use sysforge_docker::config::DockerConfig;
 use sysforge_git::config::GitConfig;
+use sysforge_network::config::NetworkConfig;
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -18,6 +19,7 @@ pub struct Config {
     pub docker: DockerConfig,
     pub theme: Theme,
     pub git: GitConfig,
+    pub network: NetworkConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -121,6 +123,9 @@ impl Config {
         }
         if self.git.enabled && self.git.interval_ms < 500 {
             bail!("git.interval_ms must be at least 500");
+        }
+        if self.network.enabled && self.network.interval_ms < 200 {
+            bail!("network.interval_ms must be at least 200");
         }
         Ok(())
     }

@@ -1,7 +1,9 @@
 use std::sync::{Arc, RwLock};
 
+use std::collections::HashMap;
 use sysforge_docker::collector::DockerStatus;
 use sysforge_git::collector::GitStatus;
+use sysforge_network::collector::NetworkSnapshot;
 use sysforge_system::cpu::CpuSnapshot;
 use sysforge_system::memory::MemorySnapshot;
 use sysforge_system::process::ProcessSnapshot;
@@ -33,6 +35,8 @@ pub struct AppState {
     pub memory_history: History,
     pub processes: Option<ProcessSnapshot>,
     pub git: GitUiState,
+    pub network: Option<NetworkSnapshot>,
+    pub network_history: HashMap<String, History>,
 }
 
 impl AppState {
@@ -54,6 +58,8 @@ impl AppState {
             } else {
                 GitUiState::Disabled
             },
+            network: None,
+            network_history: HashMap::new(),
         }
     }
 }

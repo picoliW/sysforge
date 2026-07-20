@@ -33,6 +33,11 @@ impl History {
     pub fn last(&self, n: usize) -> Vec<u64> {
         self.values.iter().rev().take(n).rev().copied().collect()
     }
+
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    pub fn push_rate(&mut self, rate: f64) {
+        self.push(rate.max(0.0) as u64);
+    }
 }
 
 impl Default for History {

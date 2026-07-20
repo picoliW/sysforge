@@ -11,6 +11,7 @@ mod cpu;
 mod docker;
 mod git;
 mod memory;
+mod network;
 mod overlay;
 mod processes;
 
@@ -56,6 +57,13 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             &ctx(PanelId::Processes),
         ),
         ViewId::Git => git::render(frame, body, &state.git, &ctx(PanelId::Git)),
+        ViewId::Network => network::render(
+            frame,
+            body,
+            state.network.as_ref(),
+            &state.network_history,
+            &ctx(PanelId::Network),
+        ),
     }
 
     if let Some(overlay) = &ui.overlay {
