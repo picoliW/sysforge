@@ -32,7 +32,7 @@ pub(super) fn render(
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            let header = Row::new(["NAME", "IMAGE", "STATE", "STATUS"])
+            let header = Row::new(["NAME", "CPU%", "MEM", "IMAGE", "STATE", "STATUS"])
                 .style(Style::default().add_modifier(Modifier::BOLD));
             let rows = snap.containers.iter().map(|c| {
                 let style = if c.is_running() {
@@ -40,8 +40,16 @@ pub(super) fn render(
                 } else {
                     Style::default().fg(Color::DarkGray)
                 };
+                let cpu = c
+                    .cpu_percent
+                    .map_or_else(|| String::from("-"), |p| format!("{p:5.1}"));
+                let mem = c
+                    .memory_usage
+                    .map_or_else(|| String::from("-"), components::format_bytes);
                 Row::new([
                     c.name.clone(),
+                    cpu,
+                    mem,
                     c.image.clone(),
                     c.state.clone(),
                     c.status.clone(),
@@ -51,9 +59,11 @@ pub(super) fn render(
             let table = Table::new(
                 rows,
                 [
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(30),
+                    Constraint::Percentage(22),
+                    Constraint::Length(6),
                     Constraint::Length(10),
+                    Constraint::Percentage(24),
+                    Constraint::Length(8),
                     Constraint::Min(0),
                 ],
             )

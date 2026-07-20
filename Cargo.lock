@@ -1400,6 +1400,7 @@ name = "sysforge-docker"
 version = "0.1.0"
 dependencies = [
  "bollard",
+ "futures",
  "serde",
  "sysforge-common",
  "tracing",

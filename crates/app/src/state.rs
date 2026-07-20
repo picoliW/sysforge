@@ -6,7 +6,7 @@ use sysforge_system::memory::MemorySnapshot;
 
 use crate::history::History;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum DockerUiState {
     Disabled,
     #[default]
