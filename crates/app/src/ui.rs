@@ -23,6 +23,8 @@ pub enum PanelId {
     Docker,
     /// Processes panel.
     Processes,
+    /// Git panel.
+    Git,
 }
 
 /// The full screens of the application.
@@ -35,11 +37,13 @@ pub enum ViewId {
     Docker,
     /// Processes, full screen (`3`).
     Processes,
+    /// Git, full screen (`4`).
+    Git,
 }
 
 impl ViewId {
     /// Every view, in switch-key order.
-    pub const ALL: [Self; 3] = [Self::Overview, Self::Docker, Self::Processes];
+    pub const ALL: [Self; 4] = [Self::Overview, Self::Docker, Self::Processes, Self::Git];
 
     /// Title shown in the view bar.
     #[must_use]
@@ -48,6 +52,7 @@ impl ViewId {
             Self::Overview => "overview",
             Self::Docker => "docker",
             Self::Processes => "processes",
+            Self::Git => "git",
         }
     }
 
@@ -63,6 +68,7 @@ impl ViewId {
             (Self::Overview, false) => &[PanelId::Cpu, PanelId::Memory, PanelId::Processes],
             (Self::Docker, _) => &[PanelId::Docker],
             (Self::Processes, _) => &[PanelId::Processes],
+            (Self::Git, _) => &[PanelId::Git],
         }
     }
 }
@@ -281,7 +287,7 @@ mod tests {
     #[test]
     fn tab_cycles_overview_without_docker() {
         let mut ui = UiState::default();
-        let mut state = AppState::new(10, false);
+        let mut state = AppState::new(10, false, false);
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::FocusNext, &state);
         ui.handle(Action::FocusNext, &state);
@@ -293,7 +299,7 @@ mod tests {
     #[test]
     fn switching_to_disabled_docker_view_is_ignored() {
         let mut ui = UiState::default();
-        let mut state = AppState::new(10, false);
+        let mut state = AppState::new(10, false, false);
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::SwitchView(ViewId::Docker), &state);
         assert_eq!(ui.view, ViewId::Overview);
@@ -302,7 +308,7 @@ mod tests {
     #[test]
     fn dedicated_view_focuses_its_panel_and_esc_goes_back() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true);
+        let state = AppState::new(10, true, true);
         ui.handle(Action::SwitchView(ViewId::Processes), &state);
         assert_eq!(ui.view, ViewId::Processes);
         assert_eq!(ui.focus, PanelId::Processes);
@@ -314,7 +320,7 @@ mod tests {
     #[test]
     fn selection_clamps_at_zero() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true);
+        let state = AppState::new(10, true, true);
         ui.handle(Action::SelectionUp, &state);
         assert_eq!(ui.docker_selected, 0);
     }
@@ -322,7 +328,7 @@ mod tests {
     #[test]
     fn open_overlay_captures_navigation_and_close() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true);
+        let state = AppState::new(10, true, true);
         ui.overlay = Some(Overlay::loading(String::from(" test ")));
 
         let command = ui.handle(Action::FocusNext, &state);

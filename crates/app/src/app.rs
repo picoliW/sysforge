@@ -5,6 +5,7 @@ use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
 use sysforge_common::collector::Collector;
 use sysforge_docker::collector::DockerCollector;
+use sysforge_git::collector::GitCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
 use sysforge_system::process::ProcessCollector;
@@ -13,7 +14,7 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::input::{self, Action};
 use crate::render;
-use crate::state::{AppState, DockerUiState, SharedState};
+use crate::state::{AppState, DockerUiState, GitUiState, SharedState};
 use crate::terminal::Tui;
 use crate::ui::{Command, UiEvent, UiState};
 
@@ -21,6 +22,7 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
         config.history.capacity,
         config.docker.enabled,
+        config.git.enabled,
     )));
 
     spawn_collector(
@@ -57,6 +59,16 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
             Arc::clone(&state),
             |s, status| {
                 s.docker = DockerUiState::Observed(status);
+            },
+        );
+    }
+
+    if config.git.enabled {
+        spawn_collector(
+            GitCollector::new(config.git.clone()),
+            Arc::clone(&state),
+            |s, status| {
+                s.git = GitUiState::Observed(status);
             },
         );
     }

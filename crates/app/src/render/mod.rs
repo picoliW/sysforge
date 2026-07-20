@@ -9,6 +9,7 @@
 mod components;
 mod cpu;
 mod docker;
+mod git;
 mod memory;
 mod overlay;
 mod processes;
@@ -54,6 +55,7 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             ui.processes_selected,
             &ctx(PanelId::Processes),
         ),
+        ViewId::Git => git::render(frame, body, &state.git, &ctx(PanelId::Git)),
     }
 
     if let Some(overlay) = &ui.overlay {

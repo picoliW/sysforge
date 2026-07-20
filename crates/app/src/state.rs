@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use sysforge_docker::collector::DockerStatus;
+use sysforge_git::collector::GitStatus;
 use sysforge_system::cpu::CpuSnapshot;
 use sysforge_system::memory::MemorySnapshot;
 use sysforge_system::process::ProcessSnapshot;
@@ -15,6 +16,14 @@ pub enum DockerUiState {
     Observed(DockerStatus),
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum GitUiState {
+    Disabled,
+    #[default]
+    Pending,
+    Observed(GitStatus),
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub cpu: Option<CpuSnapshot>,
@@ -22,13 +31,13 @@ pub struct AppState {
     pub docker: DockerUiState,
     pub memory: Option<MemorySnapshot>,
     pub memory_history: History,
-    /// Latest process table reading, `None` until the first sample.
     pub processes: Option<ProcessSnapshot>,
+    pub git: GitUiState,
 }
 
 impl AppState {
     #[must_use]
-    pub fn new(history_capacity: usize, docker_enabled: bool) -> Self {
+    pub fn new(history_capacity: usize, docker_enabled: bool, git_enabled: bool) -> Self {
         Self {
             cpu: None,
             cpu_history: History::new(history_capacity),
@@ -40,6 +49,11 @@ impl AppState {
             memory: None,
             memory_history: History::new(history_capacity),
             processes: None,
+            git: if git_enabled {
+                GitUiState::Pending
+            } else {
+                GitUiState::Disabled
+            },
         }
     }
 }

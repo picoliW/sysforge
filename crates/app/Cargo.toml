@@ -27,6 +27,7 @@ tracing-subscriber.workspace = true
 serde.workspace = true
 toml.workspace = true
 sysforge-docker.workspace = true
+sysforge-git.workspace = true
 
 [lints]
 workspace = true

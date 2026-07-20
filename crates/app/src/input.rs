@@ -121,6 +121,13 @@ const BINDINGS: &[Binding] = &[
         description: "processes view",
     },
     Binding {
+        code: KeyCode::Char('4'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Git),
+        context: Context::Views,
+        description: "git view",
+    },
+    Binding {
         code: KeyCode::Tab,
         modifiers: KeyModifiers::NONE,
         action: Action::FocusNext,

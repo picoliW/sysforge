@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use serde::Deserialize;
 use sysforge_docker::config::DockerConfig;
+use sysforge_git::config::GitConfig;
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -16,6 +17,7 @@ pub struct Config {
     pub collectors: CollectorsConfig,
     pub docker: DockerConfig,
     pub theme: Theme,
+    pub git: GitConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -116,6 +118,9 @@ impl Config {
         }
         if self.docker.enabled && self.docker.interval_ms < 500 {
             bail!("docker.interval_ms must be at least 500");
+        }
+        if self.git.enabled && self.git.interval_ms < 500 {
+            bail!("git.interval_ms must be at least 500");
         }
         Ok(())
     }
