@@ -10,6 +10,7 @@ description = "Shared types and errors for SysForge"
 
 [dependencies]
 thiserror.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

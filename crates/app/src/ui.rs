@@ -6,7 +6,9 @@
 //! exclusively by the event loop — unlike [`crate::state::AppState`]
 //! it is written by a single thread and needs no lock.
 
-use sysforge_docker::collector::{ContainerInfo, DockerStatus};
+use sysforge_common::domain_state::DomainState;
+use sysforge_docker::collector::ContainerInfo;
+use sysforge_common::availability::Availability;
 
 use crate::input::{self, Action};
 use crate::state::{AppState, DockerUiState};
@@ -22,6 +24,8 @@ pub enum PanelId {
     Git,
     Network,
     Disk,
+    /// systemd panel.
+    Systemd,
 }
 
 /// The full screens of the application.
@@ -34,17 +38,20 @@ pub enum ViewId {
     Git,
     Network,
     Disk,
+    /// systemd, full screen (`7`).
+    Systemd,
 }
 
 impl ViewId {
     /// Every view, in switch-key order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Overview,
         Self::Docker,
         Self::Processes,
         Self::Git,
         Self::Network,
         Self::Disk,
+        Self::Systemd,
     ];
 
     /// Title shown in the view bar.
@@ -57,6 +64,7 @@ impl ViewId {
             Self::Git => "git",
             Self::Network => "network",
             Self::Disk => "disk",
+            Self::Systemd => "systemd",
         }
     }
 
@@ -75,6 +83,7 @@ impl ViewId {
             (Self::Git, _) => &[PanelId::Git],
             (Self::Network, _) => &[PanelId::Network],
             (Self::Disk, _) => &[PanelId::Disk],
+            (Self::Systemd, _) => &[PanelId::Systemd],
         }
     }
 }
@@ -152,6 +161,8 @@ pub struct UiState {
     pub docker_selected: usize,
     /// Selected row in the processes table.
     pub processes_selected: usize,
+    /// Selected row in the systemd services table.
+    pub systemd_selected: usize,
     /// Modal overlay, if one is open.
     pub overlay: Option<Overlay>,
 }
@@ -172,11 +183,10 @@ impl UiState {
             return None;
         }
 
-        let docker_enabled = state.docker != DockerUiState::Disabled;
+        let docker_enabled = !state.docker.is_disabled();        
         match action {
             Action::Quit => {}
             Action::Close => {
-                // Esc means "back": from a dedicated view, to Overview.
                 if self.view != ViewId::Overview {
                     self.switch_to(ViewId::Overview, docker_enabled);
                 }
@@ -199,6 +209,9 @@ impl UiState {
                 PanelId::Processes => {
                     self.processes_selected = self.processes_selected.saturating_sub(1);
                 }
+                PanelId::Systemd => {
+                    self.systemd_selected = self.systemd_selected.saturating_sub(1);
+                }
                 _ => {}
             },
             Action::SelectionDown => match self.focus {
@@ -207,6 +220,9 @@ impl UiState {
                 }
                 PanelId::Processes => {
                     self.processes_selected = self.processes_selected.saturating_add(1);
+                }
+                PanelId::Systemd => {
+                    self.systemd_selected = self.systemd_selected.saturating_add(1);
                 }
                 _ => {}
             },
@@ -231,6 +247,9 @@ impl UiState {
         self.processes_selected = self
             .processes_selected
             .min(process_rows(state).saturating_sub(1));
+        self.systemd_selected = self
+            .systemd_selected
+            .min(systemd_rows(state).saturating_sub(1));
         None
     }
 
@@ -267,8 +286,8 @@ fn cycle(panels: &[PanelId], current: PanelId, forward: bool) -> PanelId {
 
 /// How many rows the Docker table currently has.
 fn docker_rows(state: &AppState) -> usize {
-    match &state.docker {
-        DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.len(),
+    match state.docker.observed() {
+        Some(Availability::Available(snap)) => snap.containers.len(),
         _ => 0,
     }
 }
@@ -278,10 +297,18 @@ fn process_rows(state: &AppState) -> usize {
     state.processes.as_ref().map_or(0, |s| s.processes.len())
 }
 
+/// How many rows the systemd services table currently has.
+fn systemd_rows(state: &AppState) -> usize {
+    match state.systemd.observed() {
+        Some(Availability::Available(snap)) => snap.services.len(),
+        _ => 0,
+    }
+}
+
 /// The container behind a table row, if any.
 fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> {
     match &state.docker {
-        DockerUiState::Observed(DockerStatus::Available(snap)) => snap.containers.get(index),
+        DomainState::Observed(Availability::Available(snap)) => snap.containers.get(index),
         _ => None,
     }
 }
@@ -293,7 +320,7 @@ mod tests {
     #[test]
     fn tab_cycles_overview_without_docker() {
         let mut ui = UiState::default();
-        let mut state = AppState::new(10, false, false);
+        let mut state = AppState::new(10, false, false, false);
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::FocusNext, &state);
         ui.handle(Action::FocusNext, &state);
@@ -305,7 +332,7 @@ mod tests {
     #[test]
     fn switching_to_disabled_docker_view_is_ignored() {
         let mut ui = UiState::default();
-        let mut state = AppState::new(10, false, false);
+        let mut state = AppState::new(10, false, false, false);
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::SwitchView(ViewId::Docker), &state);
         assert_eq!(ui.view, ViewId::Overview);
@@ -314,7 +341,7 @@ mod tests {
     #[test]
     fn dedicated_view_focuses_its_panel_and_esc_goes_back() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true);
+        let state = AppState::new(10, true, true, true);
         ui.handle(Action::SwitchView(ViewId::Processes), &state);
         assert_eq!(ui.view, ViewId::Processes);
         assert_eq!(ui.focus, PanelId::Processes);
@@ -326,7 +353,7 @@ mod tests {
     #[test]
     fn selection_clamps_at_zero() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true);
+        let state = AppState::new(10, true, true, true);
         ui.handle(Action::SelectionUp, &state);
         assert_eq!(ui.docker_selected, 0);
     }
@@ -334,7 +361,7 @@ mod tests {
     #[test]
     fn open_overlay_captures_navigation_and_close() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true);
+        let state = AppState::new(10, true, true, true);
         ui.overlay = Some(Overlay::loading(String::from(" test ")));
 
         let command = ui.handle(Action::FocusNext, &state);

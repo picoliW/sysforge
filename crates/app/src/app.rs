@@ -8,9 +8,11 @@ use sysforge_disk::collector::DiskCollector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_git::collector::GitCollector;
 use sysforge_network::collector::NetworkCollector;
+use sysforge_systemd::collector::SystemdCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
 use sysforge_system::process::ProcessCollector;
+use sysforge_common::domain_state::DomainState;
 
 use tokio::sync::mpsc;
 
@@ -18,7 +20,7 @@ use crate::config::Config;
 use crate::history::History;
 use crate::input::{self, Action};
 use crate::render;
-use crate::state::{AppState, DockerUiState, GitUiState, SharedState};
+use crate::state::{AppState, SharedState};
 use crate::terminal::Tui;
 use crate::ui::{Command, UiEvent, UiState};
 
@@ -27,6 +29,7 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
         config.history.capacity,
         config.docker.enabled,
         config.git.enabled,
+        config.systemd.enabled
     )));
 
     spawn_collectors(&state, config);
@@ -143,7 +146,7 @@ fn spawn_collectors(state: &SharedState, config: &Config) {
             DockerCollector::new(config.docker.clone()),
             Arc::clone(state),
             |s, status| {
-                s.docker = DockerUiState::Observed(status);
+                s.docker = DomainState::Observed(status);
             },
         );
     }
@@ -153,7 +156,7 @@ fn spawn_collectors(state: &SharedState, config: &Config) {
             GitCollector::new(config.git.clone()),
             Arc::clone(state),
             |s, status| {
-                s.git = GitUiState::Observed(status);
+                s.git = DomainState::Observed(status);
             },
         );
     }
@@ -188,6 +191,16 @@ fn spawn_collectors(state: &SharedState, config: &Config) {
                         .push_rate(device.total_rate());
                 }
                 s.disk = Some(snap);
+            },
+        );
+    }
+
+    if config.systemd.enabled {
+        spawn_collector(
+            SystemdCollector::new(config.systemd.interval()),
+            Arc::clone(state),
+            |s, status| {
+                s.systemd = DomainState::Observed(status);
             },
         );
     }

@@ -142,6 +142,13 @@ const BINDINGS: &[Binding] = &[
         description: "disk view",
     },
     Binding {
+        code: KeyCode::Char('7'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::Systemd),
+        context: Context::Views,
+        description: "systemd view",
+    },
+    Binding {
         code: KeyCode::Tab,
         modifiers: KeyModifiers::NONE,
         action: Action::FocusNext,

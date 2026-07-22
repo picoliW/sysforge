@@ -1389,6 +1389,7 @@ dependencies = [
  "sysforge-git",
  "sysforge-network",
  "sysforge-system",
+ "sysforge-systemd",
  "tokio",
  "toml",
  "tracing",
@@ -1401,6 +1402,7 @@ name = "sysforge-common"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1447,6 +1449,16 @@ dependencies = [
 name = "sysforge-system"
 version = "0.1.0"
 dependencies = [
+ "sysforge-common",
+ "tokio",
+]
+
+[[package]]
+name = "sysforge-systemd"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "sysforge-common",
  "tokio",
 ]

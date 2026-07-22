@@ -30,6 +30,7 @@ sysforge-docker.workspace = true
 sysforge-git.workspace = true
 sysforge-network.workspace = true
 sysforge-disk.workspace = true
+sysforge-systemd.workspace = true
 
 [lints]
 workspace = true

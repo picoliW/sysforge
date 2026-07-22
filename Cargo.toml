@@ -30,6 +30,8 @@ sysforge-docker = { path = "crates/docker" }
 sysforge-git = { path = "crates/git" }
 sysforge-network = { path = "crates/network" }
 sysforge-disk = { path = "crates/disk" }
+sysforge-systemd = { path = "crates/systemd" }
+serde_json = "1"
 rustix = { version = "0.38", features = ["fs"] }
 
 [workspace.lints.rust]

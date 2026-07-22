@@ -10,6 +10,7 @@ use sysforge_disk::config::DiskConfig;
 use sysforge_docker::config::DockerConfig;
 use sysforge_git::config::GitConfig;
 use sysforge_network::config::NetworkConfig;
+use sysforge_systemd::config::SystemdConfig;
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -22,6 +23,8 @@ pub struct Config {
     pub git: GitConfig,
     pub network: NetworkConfig,
     pub disk: DiskConfig,
+    /// systemd domain options.
+    pub systemd: SystemdConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

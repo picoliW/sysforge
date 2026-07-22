@@ -4,4 +4,6 @@
 //! and **only** on this crate within the workspace. Cross-domain
 //! communication happens through types defined here.
 
+pub mod availability;
 pub mod collector;
+pub mod domain_state;

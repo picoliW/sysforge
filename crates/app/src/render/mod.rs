@@ -15,6 +15,7 @@ mod memory;
 mod network;
 mod overlay;
 mod processes;
+mod systemd;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -71,6 +72,13 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             state.disk.as_ref(),
             &state.disk_history,
             &ctx(PanelId::Disk),
+        ),
+        ViewId::Systemd => systemd::render(
+            frame,
+            body,
+            &state.systemd,
+            ui.systemd_selected,
+            &ctx(PanelId::Systemd),
         ),
     }
 

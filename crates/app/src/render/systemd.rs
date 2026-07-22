@@ -1,41 +1,33 @@
-//! The Docker panel.
+//! The systemd panel: services with activation state.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Paragraph, Row, Table, TableState};
-
-use super::{RenderCtx, components};
 use sysforge_common::availability::Availability;
 use sysforge_common::domain_state::DomainState;
+use sysforge_systemd::collector::ServiceState;
 
-use crate::state::DockerUiState;
-/// Renders the Docker panel: container table, or the offline/pending
-/// placeholder.
+use super::{RenderCtx, components};
+use crate::state::SystemdUiState;
+
+/// Renders the systemd panel.
 pub(super) fn render(
     frame: &mut Frame,
     area: Rect,
-    docker: &DockerUiState,
+    systemd: &SystemdUiState,
     selected: usize,
     ctx: &RenderCtx<'_>,
 ) {
-    match docker {
-        DomainState::Disabled => {}
-        DomainState::Pending => {
-            placeholder(
-                frame,
-                area,
-                " Docker [3] ",
-                "sampling...",
-                ctx,
-                ctx.theme.muted,
-            );
+    match systemd {
+        DomainState::Disabled | DomainState::Pending => {
+            placeholder(frame, area, " Services [7] ", "sampling...", ctx, ctx.theme.muted);
         }
         DomainState::Observed(Availability::Unavailable { reason }) => {
             placeholder(
                 frame,
                 area,
-                " Docker [3] ─ offline ",
+                " Services [7] ─ offline ",
                 reason,
                 ctx,
                 ctx.theme.warning,
@@ -43,46 +35,35 @@ pub(super) fn render(
         }
         DomainState::Observed(Availability::Available(snap)) => {
             let title = format!(
-                " Docker [3] ({}/{} running) ",
-                snap.running(),
-                snap.containers.len()
+                " Services [7] ({} active · {} failed) ",
+                snap.active, snap.failed
             );
             let block = components::panel_block(&title, ctx);
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            let header = Row::new(["NAME", "CPU%", "MEM", "IMAGE", "STATE", "STATUS"])
+            let header = Row::new(["SERVICE", "STATE", "SUB", "DESCRIPTION"])
                 .style(Style::default().add_modifier(Modifier::BOLD));
-            let rows = snap.containers.iter().map(|c| {
-                let color = if c.is_running() {
-                    ctx.theme.success
-                } else {
-                    ctx.theme.muted
+            let rows = snap.services.iter().map(|svc| {
+                let color = match svc.state {
+                    ServiceState::Failed => ctx.theme.error,
+                    ServiceState::Active => ctx.theme.success,
+                    ServiceState::Inactive | ServiceState::Other => ctx.theme.muted,
                 };
-                let cpu = c
-                    .cpu_percent
-                    .map_or_else(|| String::from("-"), |p| format!("{p:5.1}"));
-                let mem = c
-                    .memory_usage
-                    .map_or_else(|| String::from("-"), components::format_bytes);
                 Row::new([
-                    c.name.clone(),
-                    cpu,
-                    mem,
-                    c.image.clone(),
-                    c.state.clone(),
-                    c.status.clone(),
+                    svc.name.clone(),
+                    state_label(svc.state).to_owned(),
+                    svc.sub.clone(),
+                    svc.description.clone(),
                 ])
                 .style(Style::default().fg(color))
             });
             let table = Table::new(
                 rows,
                 [
-                    Constraint::Percentage(22),
-                    Constraint::Length(6),
+                    Constraint::Percentage(28),
+                    Constraint::Length(9),
                     Constraint::Length(10),
-                    Constraint::Percentage(24),
-                    Constraint::Length(8),
                     Constraint::Min(0),
                 ],
             )
@@ -91,7 +72,7 @@ pub(super) fn render(
             .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
             let mut table_state = TableState::default();
-            if ctx.focused && !snap.containers.is_empty() {
+            if ctx.focused && !snap.services.is_empty() {
                 table_state.select(Some(selected));
             }
             frame.render_stateful_widget(table, inner, &mut table_state);
@@ -114,4 +95,13 @@ fn placeholder(
         Paragraph::new(body.to_owned()).style(Style::default().fg(color)),
         inner,
     );
+}
+
+fn state_label(state: ServiceState) -> &'static str {
+    match state {
+        ServiceState::Active => "active",
+        ServiceState::Inactive => "inactive",
+        ServiceState::Failed => "failed",
+        ServiceState::Other => "other",
+    }
 }

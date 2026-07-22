@@ -10,6 +10,7 @@ use bollard::models::ContainerSummary;
 use futures::StreamExt;
 use futures::future::join_all;
 use sysforge_common::collector::{Collector, CollectorError};
+use sysforge_common::availability::{Availability, AvailabilityTracker};
 
 use crate::config::DockerConfig;
 
@@ -66,24 +67,12 @@ impl DockerSnapshot {
 ///
 /// `Unavailable` is a *valid observation*, not an error: a stopped
 /// daemon is a true fact about the system, and the UI renders it.
-#[derive(Debug, Clone, PartialEq)]
-pub enum DockerStatus {
-    /// The engine answered.
-    Available(DockerSnapshot),
-    /// The engine could not be reached.
-    Unavailable {
-        /// Short human-readable cause.
-        reason: String,
-    },
-}
-
 /// Samples the Docker Engine at a configurable interval.
 #[derive(Debug)]
 pub struct DockerCollector {
     config: DockerConfig,
     client: Option<Docker>,
-    /// Last known availability, so only *transitions* are logged.
-    was_available: Option<bool>,
+    availability: AvailabilityTracker,
 }
 
 impl DockerCollector {
@@ -91,11 +80,7 @@ impl DockerCollector {
     /// attempted here: the socket may legitimately not exist yet.
     #[must_use]
     pub fn new(config: DockerConfig) -> Self {
-        Self {
-            config,
-            client: None,
-            was_available: None,
-        }
+        Self { config, client: None, availability: AvailabilityTracker::new("docker") }
     }
 
     async fn try_collect(&mut self) -> Result<DockerSnapshot, String> {
@@ -128,22 +113,10 @@ impl DockerCollector {
         enrich_with_stats(client, &mut snapshot).await;
         Ok(snapshot)
     }
-
-    fn note_availability(&mut self, up: bool, detail: &str) {
-        if self.was_available == Some(up) {
-            return;
-        }
-        if up {
-            tracing::info!("docker available");
-        } else {
-            tracing::warn!(reason = detail, "docker unavailable");
-        }
-        self.was_available = Some(up);
-    }
 }
 
 impl Collector for DockerCollector {
-    type Output = DockerStatus;
+    type Output = Availability<DockerSnapshot>;
 
     fn name(&self) -> &'static str {
         "docker"
@@ -153,17 +126,9 @@ impl Collector for DockerCollector {
         Duration::from_millis(self.config.interval_ms)
     }
 
-    async fn collect(&mut self) -> Result<DockerStatus, CollectorError> {
-        match self.try_collect().await {
-            Ok(snapshot) => {
-                self.note_availability(true, "");
-                Ok(DockerStatus::Available(snapshot))
-            }
-            Err(reason) => {
-                self.note_availability(false, &reason);
-                Ok(DockerStatus::Unavailable { reason })
-            }
-        }
+    async fn collect(&mut self) -> Result<Availability<DockerSnapshot>, CollectorError> {
+        let result = self.try_collect().await;
+        Ok(self.availability.wrap(result))
     }
 }
 
