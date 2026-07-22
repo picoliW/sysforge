@@ -16,7 +16,10 @@ pub struct SystemdConfig {
 
 impl Default for SystemdConfig {
     fn default() -> Self {
-        Self { enabled: true, interval_ms: 3000 }
+        Self {
+            enabled: true,
+            interval_ms: 3000,
+        }
     }
 }
 

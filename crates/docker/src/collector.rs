@@ -9,8 +9,8 @@ use bollard::container::{ListContainersOptions, Stats, StatsOptions};
 use bollard::models::ContainerSummary;
 use futures::StreamExt;
 use futures::future::join_all;
-use sysforge_common::collector::{Collector, CollectorError};
 use sysforge_common::availability::{Availability, AvailabilityTracker};
+use sysforge_common::collector::{Collector, CollectorError};
 
 use crate::config::DockerConfig;
 
@@ -80,7 +80,11 @@ impl DockerCollector {
     /// attempted here: the socket may legitimately not exist yet.
     #[must_use]
     pub fn new(config: DockerConfig) -> Self {
-        Self { config, client: None, availability: AvailabilityTracker::new("docker") }
+        Self {
+            config,
+            client: None,
+            availability: AvailabilityTracker::new("docker"),
+        }
     }
 
     async fn try_collect(&mut self) -> Result<DockerSnapshot, String> {

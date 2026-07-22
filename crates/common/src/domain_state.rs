@@ -21,7 +21,11 @@ impl<T> DomainState<T> {
     /// Creates the initial state: `Pending` if enabled, else `Disabled`.
     #[must_use]
     pub fn new(enabled: bool) -> Self {
-        if enabled { Self::Pending } else { Self::Disabled }
+        if enabled {
+            Self::Pending
+        } else {
+            Self::Disabled
+        }
     }
 
     /// Whether the domain is disabled.

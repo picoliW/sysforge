@@ -4,15 +4,15 @@ use anyhow::Result;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
 use sysforge_common::collector::Collector;
+use sysforge_common::domain_state::DomainState;
 use sysforge_disk::collector::DiskCollector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_git::collector::GitCollector;
 use sysforge_network::collector::NetworkCollector;
-use sysforge_systemd::collector::SystemdCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
 use sysforge_system::process::ProcessCollector;
-use sysforge_common::domain_state::DomainState;
+use sysforge_systemd::collector::SystemdCollector;
 
 use tokio::sync::mpsc;
 
@@ -29,7 +29,7 @@ pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
         config.history.capacity,
         config.docker.enabled,
         config.git.enabled,
-        config.systemd.enabled
+        config.systemd.enabled,
     )));
 
     spawn_collectors(&state, config);
@@ -83,11 +83,12 @@ fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEv
     }
 }
 
-fn spawn_collector<C, F>(mut collector: C, state: SharedState, apply: F)
+fn spawn_collector<C, F>(mut collector: C, state: SharedState, apply: F) -> &'static str
 where
     C: Collector,
     F: Fn(&mut AppState, C::Output) + Send + 'static,
 {
+    let name = collector.name();
     tokio::spawn(async move {
         tracing::info!(collector = collector.name(), "collector started");
         let mut timer = tokio::time::interval(collector.interval());
@@ -109,20 +110,25 @@ where
             }
         }
     });
+    name
 }
 
-/// Starts every enabled collector on its own task.
-fn spawn_collectors(state: &SharedState, config: &Config) {
-    spawn_collector(
+/// Starts every enabled collector on its own task, returning the names
+/// of the collectors it started. The bootstrap and the guard test both
+/// rely on this being the single place domains are wired in.
+fn spawn_collectors(state: &SharedState, config: &Config) -> Vec<&'static str> {
+    let mut started = Vec::new();
+
+    started.push(spawn_collector(
         MemoryCollector::new(config.collectors.memory.interval()),
         Arc::clone(state),
         |s, snap| {
             s.memory_history.push_percent(snap.used_percent());
             s.memory = Some(snap);
         },
-    );
+    ));
 
-    spawn_collector(
+    started.push(spawn_collector(
         CpuCollector::new(config.collectors.cpu.interval()),
         Arc::clone(state),
         |s, snap| {
@@ -131,39 +137,39 @@ fn spawn_collectors(state: &SharedState, config: &Config) {
                 s.cpu = Some(snap);
             }
         },
-    );
+    ));
 
-    spawn_collector(
+    started.push(spawn_collector(
         ProcessCollector::new(config.collectors.processes.interval()),
         Arc::clone(state),
         |s, snap| {
             s.processes = Some(snap);
         },
-    );
+    ));
 
     if config.docker.enabled {
-        spawn_collector(
+        started.push(spawn_collector(
             DockerCollector::new(config.docker.clone()),
             Arc::clone(state),
             |s, status| {
                 s.docker = DomainState::Observed(status);
             },
-        );
+        ));
     }
 
     if config.git.enabled {
-        spawn_collector(
+        started.push(spawn_collector(
             GitCollector::new(config.git.clone()),
             Arc::clone(state),
             |s, status| {
                 s.git = DomainState::Observed(status);
             },
-        );
+        ));
     }
 
     if config.network.enabled {
         let capacity = config.history.capacity;
-        spawn_collector(
+        started.push(spawn_collector(
             NetworkCollector::new(config.network.interval()),
             Arc::clone(state),
             move |s, snap| {
@@ -175,12 +181,12 @@ fn spawn_collectors(state: &SharedState, config: &Config) {
                 }
                 s.network = Some(snap);
             },
-        );
+        ));
     }
 
     if config.disk.enabled {
         let capacity = config.history.capacity;
-        spawn_collector(
+        started.push(spawn_collector(
             DiskCollector::new(config.disk.interval()),
             Arc::clone(state),
             move |s, snap| {
@@ -192,16 +198,71 @@ fn spawn_collectors(state: &SharedState, config: &Config) {
                 }
                 s.disk = Some(snap);
             },
-        );
+        ));
     }
 
     if config.systemd.enabled {
-        spawn_collector(
+        started.push(spawn_collector(
             SystemdCollector::new(config.systemd.interval()),
             Arc::clone(state),
             |s, status| {
                 s.systemd = DomainState::Observed(status);
             },
+        ));
+    }
+
+    tracing::info!(count = started.len(), collectors = ?started, "collectors started");
+    started
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every domain that must be wired into the bootstrap. Adding a
+    /// domain means adding its collector name here — and the test below
+    /// fails until `spawn_collectors` actually starts it.
+    const EXPECTED_DOMAINS: &[&str] = &[
+        "memory", "cpu", "process", "docker", "git", "network", "disk", "systemd",
+    ];
+
+    /// A config with every optional domain enabled, so the bootstrap
+    /// attempts to start all of them.
+    fn all_enabled_config() -> Config {
+        let mut config = Config::default();
+        config.docker.enabled = true;
+        config.git.enabled = true;
+        config.network.enabled = true;
+        config.disk.enabled = true;
+        config.systemd.enabled = true;
+        config
+    }
+
+    /// The architectural guarantee: every domain present in the codebase
+    /// is actually started by the bootstrap. A domain implemented but
+    /// never spawned — the bug that silently showed "sampling..." for
+    /// memory and network in the past — fails here instead of at runtime.
+    #[tokio::test]
+    async fn every_domain_is_wired_into_the_bootstrap() {
+        let config = all_enabled_config();
+        let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
+            config.history.capacity,
+            config.docker.enabled,
+            config.git.enabled,
+            config.systemd.enabled,
+        )));
+
+        let mut started = spawn_collectors(&state, &config);
+        started.sort_unstable();
+
+        let mut expected: Vec<&str> = EXPECTED_DOMAINS.to_vec();
+        expected.sort_unstable();
+
+        assert_eq!(
+            started, expected,
+            "collectors started by the bootstrap do not match the expected \
+             domains — a domain was likely added to AppState/config but not \
+             spawned in spawn_collectors (or vice versa)"
         );
     }
 }

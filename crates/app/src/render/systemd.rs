@@ -21,7 +21,14 @@ pub(super) fn render(
 ) {
     match systemd {
         DomainState::Disabled | DomainState::Pending => {
-            placeholder(frame, area, " Services [7] ", "sampling...", ctx, ctx.theme.muted);
+            placeholder(
+                frame,
+                area,
+                " Services [7] ",
+                "sampling...",
+                ctx,
+                ctx.theme.muted,
+            );
         }
         DomainState::Observed(Availability::Unavailable { reason }) => {
             placeholder(

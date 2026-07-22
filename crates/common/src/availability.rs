@@ -30,7 +30,10 @@ impl AvailabilityTracker {
     /// Creates a tracker labelling logs with `name`.
     #[must_use]
     pub fn new(name: &'static str) -> Self {
-        Self { was_available: None, name }
+        Self {
+            was_available: None,
+            name,
+        }
     }
 
     /// Wraps a domain result into an [`Availability`], logging the

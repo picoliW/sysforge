@@ -6,9 +6,9 @@
 //! exclusively by the event loop — unlike [`crate::state::AppState`]
 //! it is written by a single thread and needs no lock.
 
+use sysforge_common::availability::Availability;
 use sysforge_common::domain_state::DomainState;
 use sysforge_docker::collector::ContainerInfo;
-use sysforge_common::availability::Availability;
 
 use crate::input::{self, Action};
 use crate::state::{AppState, DockerUiState};
@@ -183,7 +183,7 @@ impl UiState {
             return None;
         }
 
-        let docker_enabled = !state.docker.is_disabled();        
+        let docker_enabled = !state.docker.is_disabled();
         match action {
             Action::Quit => {}
             Action::Close => {

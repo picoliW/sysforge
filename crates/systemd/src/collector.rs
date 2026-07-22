@@ -85,7 +85,10 @@ impl SystemdCollector {
     /// Creates a collector sampling at the given interval.
     #[must_use]
     pub fn new(interval: Duration) -> Self {
-        Self { interval, availability: AvailabilityTracker::new("systemd") }
+        Self {
+            interval,
+            availability: AvailabilityTracker::new("systemd"),
+        }
     }
 
     async fn try_collect(&self) -> Result<SystemdSnapshot, String> {
@@ -139,14 +142,27 @@ fn parse_units(json: &[u8]) -> Result<SystemdSnapshot, serde_json::Error> {
         })
         .collect();
 
-    let active = services.iter().filter(|s| s.state == ServiceState::Active).count();
-    let failed = services.iter().filter(|s| s.state == ServiceState::Failed).count();
+    let active = services
+        .iter()
+        .filter(|s| s.state == ServiceState::Active)
+        .count();
+    let failed = services
+        .iter()
+        .filter(|s| s.state == ServiceState::Failed)
+        .count();
 
     services.sort_by(|a, b| {
-        a.state.rank().cmp(&b.state.rank()).then_with(|| a.name.cmp(&b.name))
+        a.state
+            .rank()
+            .cmp(&b.state.rank())
+            .then_with(|| a.name.cmp(&b.name))
     });
 
-    Ok(SystemdSnapshot { services, active, failed })
+    Ok(SystemdSnapshot {
+        services,
+        active,
+        failed,
+    })
 }
 
 #[cfg(test)]
