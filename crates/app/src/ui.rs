@@ -11,7 +11,7 @@ use sysforge_common::domain_state::DomainState;
 use sysforge_docker::collector::ContainerInfo;
 
 use crate::input::{self, Action};
-use crate::state::{AppState, DockerUiState};
+use crate::state::AppState;
 
 /// The reusable panels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -98,37 +98,70 @@ pub struct Overlay {
     pub lines: Vec<String>,
     /// First visible line.
     pub scroll: u16,
+    /// What kind of overlay this is.
+    pub kind: OverlayKind,
 }
 
 impl Overlay {
-    /// An overlay with ready content.
-    pub fn text(title: impl Into<String>, lines: Vec<String>) -> Self {
+    /// A text overlay with content already available.
+    fn text(title: &str, lines: Vec<String>) -> Self {
         Self {
-            title: title.into(),
+            title: title.to_owned(),
             lines,
             scroll: 0,
+            kind: OverlayKind::Text,
         }
     }
 
+    /// An overlay whose content is still being fetched asynchronously.
     fn loading(title: String) -> Self {
         Self {
             title,
             lines: vec![String::from("loading...")],
             scroll: 0,
+            kind: OverlayKind::Text,
         }
     }
 
+    /// Scrolls one line up.
     fn scroll_up(&mut self) {
         self.scroll = self.scroll.saturating_sub(1);
     }
 
+    /// Scrolls one line down, stopping at the last line.
     fn scroll_down(&mut self) {
-        let last = self.lines.len().saturating_sub(1);
-        let last = u16::try_from(last).unwrap_or(u16::MAX);
+        let last = u16::try_from(self.lines.len().saturating_sub(1)).unwrap_or(u16::MAX);
         self.scroll = self.scroll.saturating_add(1).min(last);
     }
-}
 
+    /// A yes/no confirmation for a pending action.
+    fn confirm(request: ActionRequest) -> Self {
+        Self {
+            title: String::from(" confirm "),
+            lines: vec![
+                request.prompt.clone(),
+                String::new(),
+                "[y] confirm    [n / Esc] cancel".to_owned(),
+            ],
+            scroll: 0,
+            kind: OverlayKind::Confirm(request),
+        }
+    }
+
+    /// Feedback after an action finishes.
+    fn outcome(outcome: &ActionOutcome) -> Self {
+        let (title, body) = match outcome {
+            ActionOutcome::Success(msg) => (" done ", msg.clone()),
+            ActionOutcome::Failure(msg) => (" failed ", msg.clone()),
+        };
+        Self {
+            title: title.to_owned(),
+            lines: vec![body, String::new(), "[Esc] close".to_owned()],
+            scroll: 0,
+            kind: OverlayKind::Text,
+        }
+    }
+}
 /// An intention produced by the UI for the runtime to execute.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -137,15 +170,19 @@ pub enum Command {
         /// Engine identifier of the container.
         id: String,
     },
+    /// Execute a confirmed domain action.
+    RunAction(ActionCommand),
 }
 
 /// An asynchronous result delivered back to the UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEvent {
-    /// Content for the currently open overlay.
     OverlayContent {
-        /// Replacement content lines.
         lines: Vec<String>,
+    },
+    /// An action finished; show its outcome.
+    ActionFinished {
+        outcome: ActionOutcome,
     },
 }
 
@@ -167,6 +204,51 @@ pub struct UiState {
     pub overlay: Option<Overlay>,
 }
 
+/// A domain action awaiting or undergoing execution.
+///
+/// Actions change the state of the world (restarting a container,
+/// stopping a service), so every one passes through explicit
+/// confirmation before running and always reports its outcome. The
+/// target is captured at proposal time, not execution time: what you
+/// confirm is what you saw.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionRequest {
+    /// One-line description shown in the confirmation prompt.
+    pub prompt: String,
+    /// The work to perform once confirmed.
+    pub command: ActionCommand,
+}
+
+/// The concrete work an action performs. Like [`Command`], this names
+/// its domain: an intention has a destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionCommand {
+    /// A no-op used to validate the action pipeline end to end without
+    /// touching the system. Removed once real actions exist.
+    Noop,
+    // Phase 2 adds: RestartContainer { id }, StartService { name }, ...
+}
+
+/// How a finished action turned out, shown as feedback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionOutcome {
+    /// The action succeeded.
+    Success(String),
+    /// The action failed, with a reason.
+    #[expect(dead_code, reason = "constructed by real actions in phase 2")]
+    Failure(String),
+}
+/// What an overlay is showing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OverlayKind {
+    /// Scrollable text (logs, help).
+    Text,
+    /// A yes/no confirmation for a pending action.
+    Confirm(ActionRequest),
+    /// An action is running; no input accepted.
+    Running,
+}
+
 impl UiState {
     /// Applies an action given the latest observed state, possibly
     /// producing a [`Command`]. [`Action::Quit`] is handled by the
@@ -174,10 +256,24 @@ impl UiState {
     pub fn handle(&mut self, action: Action, state: &AppState) -> Option<Command> {
         // Modal: an open overlay captures the interaction.
         if let Some(overlay) = &mut self.overlay {
-            match action {
-                Action::Close => self.overlay = None,
-                Action::SelectionUp => overlay.scroll_up(),
-                Action::SelectionDown => overlay.scroll_down(),
+            match (&overlay.kind, action) {
+                (OverlayKind::Confirm(request), Action::Confirm) => {
+                    let command = request.command.clone();
+                    self.overlay = Some(Overlay {
+                        title: " running ".to_owned(),
+                        lines: vec!["running...".to_owned()],
+                        scroll: 0,
+                        kind: OverlayKind::Running,
+                    });
+                    return Some(Command::RunAction(command));
+                }
+                (OverlayKind::Confirm(_), Action::Close) => {
+                    self.overlay = None; // cancelled — nothing ran
+                }
+                (OverlayKind::Running, _) => {} // input ignored while running
+                (_, Action::Close) => self.overlay = None,
+                (_, Action::SelectionUp) => overlay.scroll_up(),
+                (_, Action::SelectionDown) => overlay.scroll_down(),
                 _ => {}
             }
             return None;
@@ -185,7 +281,9 @@ impl UiState {
 
         let docker_enabled = !state.docker.is_disabled();
         match action {
-            Action::Quit => {}
+            // Quit is handled in the run loop; Confirm only matters
+            // while a confirmation overlay is open (handled above).
+            Action::Quit | Action::Confirm => {}
             Action::Close => {
                 if self.view != ViewId::Overview {
                     self.switch_to(ViewId::Overview, docker_enabled);
@@ -240,6 +338,13 @@ impl UiState {
             Action::OpenHelp => {
                 self.overlay = Some(Overlay::text(" help ", input::help_lines()));
             }
+            Action::Propose => {
+                self.overlay = Some(Overlay::confirm(ActionRequest {
+                    prompt: String::from("Run the test action?"),
+                    command: ActionCommand::Noop,
+                }));
+            } // Confirming only means something while a confirmation
+              // overlay is open, which the modal branch above handles.
         }
         self.docker_selected = self
             .docker_selected
@@ -254,13 +359,22 @@ impl UiState {
     }
 
     /// Applies an asynchronous result. A late result for a closed
-    /// overlay is dropped: the user's intent wins.
     pub fn apply_event(&mut self, event: UiEvent) {
         match event {
             UiEvent::OverlayContent { lines } => {
                 if let Some(overlay) = &mut self.overlay {
                     overlay.lines = lines;
                     overlay.scroll = 0;
+                }
+            }
+            UiEvent::ActionFinished { outcome } => {
+                // Only replace a Running overlay — if the user closed it,
+                // the result is dropped (their intent wins).
+                if matches!(
+                    self.overlay.as_ref().map(|o| &o.kind),
+                    Some(OverlayKind::Running)
+                ) {
+                    self.overlay = Some(Overlay::outcome(&outcome));
                 }
             }
         }
@@ -316,6 +430,7 @@ fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::DockerUiState;
 
     #[test]
     fn tab_cycles_overview_without_docker() {
@@ -378,5 +493,42 @@ mod tests {
             lines: vec![String::from("x")],
         });
         assert!(ui.overlay.is_none());
+    }
+
+    #[test]
+    fn action_requires_confirmation() {
+        let mut ui = UiState::default();
+        let state = AppState::new(10, true, true, true);
+        // Proposing opens a confirmation and runs nothing.
+        let cmd = ui.handle(Action::Propose, &state);
+        assert_eq!(cmd, None);
+        assert!(matches!(
+            ui.overlay.as_ref().map(|o| &o.kind),
+            Some(OverlayKind::Confirm(_))
+        ));
+        // Confirming is what actually dispatches the work.
+        let cmd = ui.handle(Action::Confirm, &state);
+        assert_eq!(cmd, Some(Command::RunAction(ActionCommand::Noop)));
+    }
+
+    #[test]
+    fn cancelling_runs_nothing() {
+        let mut ui = UiState::default();
+        let state = AppState::new(10, true, true, true);
+        ui.handle(Action::Propose, &state);
+        let cmd = ui.handle(Action::Close, &state);
+        assert_eq!(cmd, None);
+        assert!(ui.overlay.is_none());
+    }
+
+    #[test]
+    fn running_overlay_ignores_input() {
+        let mut ui = UiState::default();
+        let state = AppState::new(10, true, true, true);
+        ui.handle(Action::Propose, &state);
+        ui.handle(Action::Confirm, &state);
+        // A second confirmation while running dispatches nothing.
+        let cmd = ui.handle(Action::Confirm, &state);
+        assert_eq!(cmd, None);
     }
 }

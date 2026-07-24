@@ -29,6 +29,10 @@ pub enum Action {
     OpenLogs,
     /// Open the help overlay.
     OpenHelp,
+    /// Confirm the pending action shown in a confirmation overlay.
+    Confirm,
+    /// Propose an action for the current selection (asks to confirm).
+    Propose,
 }
 
 /// Help section a binding belongs to. Presentation only: what an
@@ -43,11 +47,19 @@ pub enum Context {
     Navigation,
     /// Docker actions.
     Docker,
+    /// Actions that change the state of the system.
+    Actions,
 }
 
 impl Context {
     /// Section order and titles in the help overlay.
-    const ORDER: [Self; 4] = [Self::Global, Self::Views, Self::Navigation, Self::Docker];
+    const ORDER: [Self; 5] = [
+        Self::Global,
+        Self::Views,
+        Self::Navigation,
+        Self::Docker,
+        Self::Actions,
+    ];
 
     fn title(self) -> &'static str {
         match self {
@@ -55,6 +67,7 @@ impl Context {
             Self::Views => "Views",
             Self::Navigation => "Navigation",
             Self::Docker => "Docker",
+            Self::Actions => "Actions",
         }
     }
 }
@@ -147,6 +160,20 @@ const BINDINGS: &[Binding] = &[
         action: Action::SwitchView(ViewId::Systemd),
         context: Context::Views,
         description: "systemd view",
+    },
+    Binding {
+        code: KeyCode::Char('a'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::Propose,
+        context: Context::Actions,
+        description: "propose action",
+    },
+    Binding {
+        code: KeyCode::Char('y'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::Confirm,
+        context: Context::Actions,
+        description: "confirm action",
     },
     Binding {
         code: KeyCode::Tab,

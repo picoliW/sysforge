@@ -22,7 +22,7 @@ use crate::input::{self, Action};
 use crate::render;
 use crate::state::{AppState, SharedState};
 use crate::terminal::Tui;
-use crate::ui::{Command, UiEvent, UiState};
+use crate::ui::{ActionCommand, ActionOutcome, Command, UiEvent, UiState};
 
 pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
@@ -79,6 +79,27 @@ fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEv
                 };
                 let _ = events.send(UiEvent::OverlayContent { lines });
             });
+        }
+
+        Command::RunAction(action) => {
+            let events = events.clone();
+            tokio::spawn(async move {
+                let outcome = run_action(action).await;
+                let _ = events.send(UiEvent::ActionFinished { outcome });
+            });
+        }
+    }
+}
+
+/// Executes a domain action. Phase 1 only knows the no-op used to
+/// validate the pipeline; phase 2 adds real container and service
+/// actions.
+#[expect(clippy::unused_async, reason = "real actions in phase 2 await I/O")]
+async fn run_action(action: ActionCommand) -> ActionOutcome {
+    match action {
+        ActionCommand::Noop => {
+            tracing::info!("test action executed");
+            ActionOutcome::Success("test action completed".to_owned())
         }
     }
 }
