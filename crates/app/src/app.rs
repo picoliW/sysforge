@@ -82,24 +82,36 @@ fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEv
         }
 
         Command::RunAction(action) => {
+            let socket = config.docker.socket.clone();
             let events = events.clone();
             tokio::spawn(async move {
-                let outcome = run_action(action).await;
+                let outcome = run_action(action, socket).await;
                 let _ = events.send(UiEvent::ActionFinished { outcome });
             });
         }
     }
 }
 
-/// Executes a domain action. Phase 1 only knows the no-op used to
-/// validate the pipeline; phase 2 adds real container and service
-/// actions.
-#[expect(clippy::unused_async, reason = "real actions in phase 2 await I/O")]
-async fn run_action(action: ActionCommand) -> ActionOutcome {
+/// Executes a confirmed domain action, dispatching to the domain crate
+/// that owns the underlying client and mapping the result to an
+/// outcome shown to the user.
+async fn run_action(action: ActionCommand, socket: String) -> ActionOutcome {
     match action {
-        ActionCommand::Noop => {
-            tracing::info!("test action executed");
-            ActionOutcome::Success("test action completed".to_owned())
+        ActionCommand::RestartContainer { id, name } => {
+            match sysforge_docker::actions::restart(&socket, &id).await {
+                Ok(()) => ActionOutcome::Success(format!("Restarted {name}")),
+                Err(reason) => {
+                    ActionOutcome::Failure(format!("Failed to restart {name}\n\n{reason}"))
+                }
+            }
+        }
+        ActionCommand::Service { verb, unit } => {
+            match sysforge_systemd::actions::run(verb, &unit).await {
+                Ok(()) => ActionOutcome::Success(format!("{verb:?} {unit} succeeded")),
+                Err(reason) => {
+                    ActionOutcome::Failure(format!("Failed to {verb:?} {unit}\n\n{reason}"))
+                }
+            }
         }
     }
 }

@@ -223,10 +223,20 @@ pub struct ActionRequest {
 /// its domain: an intention has a destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionCommand {
-    /// A no-op used to validate the action pipeline end to end without
-    /// touching the system. Removed once real actions exist.
-    Noop,
-    // Phase 2 adds: RestartContainer { id }, StartService { name }, ...
+    /// Restart a Docker container by id.
+    RestartContainer {
+        /// Engine id of the container.
+        id: String,
+        /// Container name, for the confirmation prompt and feedback.
+        name: String,
+    },
+    /// Change a systemd service's state.
+    Service {
+        /// The operation to perform.
+        verb: sysforge_systemd::actions::Verb,
+        /// Unit name.
+        unit: String,
+    },
 }
 
 /// How a finished action turned out, shown as feedback.
@@ -235,7 +245,6 @@ pub enum ActionOutcome {
     /// The action succeeded.
     Success(String),
     /// The action failed, with a reason.
-    #[expect(dead_code, reason = "constructed by real actions in phase 2")]
     Failure(String),
 }
 /// What an overlay is showing.
@@ -339,12 +348,10 @@ impl UiState {
                 self.overlay = Some(Overlay::text(" help ", input::help_lines()));
             }
             Action::Propose => {
-                self.overlay = Some(Overlay::confirm(ActionRequest {
-                    prompt: String::from("Run the test action?"),
-                    command: ActionCommand::Noop,
-                }));
-            } // Confirming only means something while a confirmation
-              // overlay is open, which the modal branch above handles.
+                if let Some(request) = propose_for_focus(self, state) {
+                    self.overlay = Some(Overlay::confirm(request));
+                }
+            }
         }
         self.docker_selected = self
             .docker_selected
@@ -427,10 +434,69 @@ fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> 
     }
 }
 
+/// Builds the action proposal for the currently focused panel and
+/// selection, if any action applies there.
+fn propose_for_focus(ui: &UiState, state: &AppState) -> Option<ActionRequest> {
+    match ui.focus {
+        PanelId::Docker => {
+            let container = selected_container(state, ui.docker_selected)?;
+            Some(ActionRequest {
+                prompt: format!("Restart container {}?", container.name),
+                command: ActionCommand::RestartContainer {
+                    id: container.id.clone(),
+                    name: container.name.clone(),
+                },
+            })
+        }
+        PanelId::Systemd => {
+            let service = selected_service(state, ui.systemd_selected)?;
+            Some(ActionRequest {
+                prompt: format!("Restart service {}?", service.name),
+                command: ActionCommand::Service {
+                    verb: sysforge_systemd::actions::Verb::Restart,
+                    unit: service.name.clone(),
+                },
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The service behind a table row, if any.
+fn selected_service(
+    state: &AppState,
+    index: usize,
+) -> Option<&sysforge_systemd::collector::ServiceInfo> {
+    match state.systemd.observed() {
+        Some(Availability::Available(snap)) => snap.services.get(index),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::state::DockerUiState;
+    use sysforge_common::availability::Availability;
+    use sysforge_docker::collector::DockerSnapshot;
+
+    /// An `AppState` with a single running container, Docker available.
+    fn state_with_one_container() -> AppState {
+        let mut state = AppState::new(10, true, true, true);
+        let container = ContainerInfo {
+            id: "abc123".to_owned(),
+            name: "nginx".to_owned(),
+            image: "nginx".to_owned(),
+            state: "running".to_owned(),
+            status: "Up 1 minute".to_owned(),
+            cpu_percent: Some(0.0),
+            memory_usage: Some(0),
+        };
+        state.docker = DomainState::Observed(Availability::Available(DockerSnapshot {
+            containers: vec![container],
+        }));
+        state
+    }
 
     #[test]
     fn tab_cycles_overview_without_docker() {
@@ -498,7 +564,9 @@ mod tests {
     #[test]
     fn action_requires_confirmation() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true, true);
+        let state = state_with_one_container();
+        // Focus the Docker panel, where a restart action applies.
+        ui.focus = PanelId::Docker;
         // Proposing opens a confirmation and runs nothing.
         let cmd = ui.handle(Action::Propose, &state);
         assert_eq!(cmd, None);
@@ -506,15 +574,19 @@ mod tests {
             ui.overlay.as_ref().map(|o| &o.kind),
             Some(OverlayKind::Confirm(_))
         ));
-        // Confirming is what actually dispatches the work.
+        // Confirming dispatches the real container restart.
         let cmd = ui.handle(Action::Confirm, &state);
-        assert_eq!(cmd, Some(Command::RunAction(ActionCommand::Noop)));
+        assert!(matches!(
+            cmd,
+            Some(Command::RunAction(ActionCommand::RestartContainer { .. }))
+        ));
     }
 
     #[test]
     fn cancelling_runs_nothing() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true, true);
+        let state = state_with_one_container();
+        ui.focus = PanelId::Docker;
         ui.handle(Action::Propose, &state);
         let cmd = ui.handle(Action::Close, &state);
         assert_eq!(cmd, None);
@@ -524,7 +596,8 @@ mod tests {
     #[test]
     fn running_overlay_ignores_input() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true, true);
+        let state = state_with_one_container();
+        ui.focus = PanelId::Docker;
         ui.handle(Action::Propose, &state);
         ui.handle(Action::Confirm, &state);
         // A second confirmation while running dispatches nothing.

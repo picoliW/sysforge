@@ -9,6 +9,7 @@ use serde::Deserialize;
 use sysforge_disk::config::DiskConfig;
 use sysforge_docker::config::DockerConfig;
 use sysforge_git::config::GitConfig;
+use sysforge_k8s::config::K8sConfig;
 use sysforge_network::config::NetworkConfig;
 use sysforge_systemd::config::SystemdConfig;
 
@@ -25,6 +26,8 @@ pub struct Config {
     pub disk: DiskConfig,
     /// systemd domain options.
     pub systemd: SystemdConfig,
+    /// Kubernetes domain options.
+    pub k8s: K8sConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

@@ -5,5 +5,6 @@
 //! without systemd as init is reported as observable state, never as
 //! a fatal error.
 
+pub mod actions;
 pub mod collector;
 pub mod config;

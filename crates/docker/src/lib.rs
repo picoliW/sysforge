@@ -4,6 +4,7 @@
 //! a missing socket, stopped daemon or denied permission is reported
 //! as observable state, never as a fatal error.
 
+pub mod actions;
 pub mod collector;
 pub mod config;
 pub mod logs;
