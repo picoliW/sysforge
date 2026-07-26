@@ -5,7 +5,10 @@
 //! domain, an unreachable or unconfigured cluster is reported as
 //! observable state (`Unavailable`), never as a fatal error.
 //!
-//! This crate is scaffolded in step 25.1 (stack choice); the read-only
-//! Pod collector arrives in 25.2.
+//! The `kube` and `k8s-openapi` types never leave this crate: the
+//! collector converts each `Pod` into a plain [`collector::PodInfo`]
+//! immediately, so the rest of SysForge never depends on the client
+//! library — exactly as the Docker domain hides bollard.
 
+pub mod collector;
 pub mod config;

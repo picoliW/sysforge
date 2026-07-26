@@ -8,6 +8,7 @@ use sysforge_common::domain_state::DomainState;
 use sysforge_disk::collector::DiskSnapshot;
 use sysforge_docker::collector::DockerSnapshot;
 use sysforge_git::collector::GitStatus;
+use sysforge_k8s::collector::K8sSnapshot;
 use sysforge_network::collector::NetworkSnapshot;
 use sysforge_system::cpu::CpuSnapshot;
 use sysforge_system::memory::MemorySnapshot;
@@ -22,6 +23,8 @@ pub type DockerUiState = DomainState<Availability<DockerSnapshot>>;
 pub type GitUiState = DomainState<GitStatus>;
 /// systemd domain as the UI sees it.
 pub type SystemdUiState = DomainState<Availability<SystemdSnapshot>>;
+/// Kubernetes domain as the UI sees it.
+pub type K8sUiState = DomainState<Availability<K8sSnapshot>>;
 
 /// Everything the UI needs in order to render a frame.
 ///
@@ -54,30 +57,51 @@ pub struct AppState {
     pub disk_history: HashMap<String, History>,
     /// systemd domain as last observed.
     pub systemd: SystemdUiState,
+    /// Kubernetes domain as last observed.
+    pub k8s: K8sUiState,
+}
+
+/// Which optional domains are enabled, passed to [`AppState::new`].
+///
+/// A named struct instead of a row of `bool` parameters: the fields
+/// can't be silently swapped, and adding a domain is one more named
+/// field rather than one more positional flag.
+///
+/// These flags are genuinely independent on/off toggles, one per
+/// optional domain — not a confused state that wants an enum or a
+/// state machine, which is what `struct_excessive_bools` guards
+/// against. Named bools are the right representation here.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy)]
+pub struct DomainsEnabled {
+    /// Docker collector enabled.
+    pub docker: bool,
+    /// Git collector enabled.
+    pub git: bool,
+    /// systemd collector enabled.
+    pub systemd: bool,
+    /// Kubernetes collector enabled.
+    pub k8s: bool,
 }
 
 impl AppState {
     /// Creates an empty state with the configured history retention.
     #[must_use]
-    pub fn new(
-        history_capacity: usize,
-        docker_enabled: bool,
-        git_enabled: bool,
-        systemd_enabled: bool,
-    ) -> Self {
+    pub fn new(history_capacity: usize, enabled: DomainsEnabled) -> Self {
         Self {
             cpu: None,
             cpu_history: History::new(history_capacity),
-            docker: DomainState::new(docker_enabled),
+            docker: DomainState::new(enabled.docker),
             memory: None,
             memory_history: History::new(history_capacity),
             processes: None,
-            git: DomainState::new(git_enabled),
+            git: DomainState::new(enabled.git),
             network: None,
             network_history: HashMap::new(),
             disk: None,
             disk_history: HashMap::new(),
-            systemd: DomainState::new(systemd_enabled),
+            systemd: DomainState::new(enabled.systemd),
+            k8s: DomainState::new(enabled.k8s),
         }
     }
 }

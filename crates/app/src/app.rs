@@ -8,6 +8,7 @@ use sysforge_common::domain_state::DomainState;
 use sysforge_disk::collector::DiskCollector;
 use sysforge_docker::collector::DockerCollector;
 use sysforge_git::collector::GitCollector;
+use sysforge_k8s::collector::K8sCollector;
 use sysforge_network::collector::NetworkCollector;
 use sysforge_system::cpu::CpuCollector;
 use sysforge_system::memory::MemoryCollector;
@@ -20,16 +21,19 @@ use crate::config::Config;
 use crate::history::History;
 use crate::input::{self, Action};
 use crate::render;
-use crate::state::{AppState, SharedState};
+use crate::state::{AppState, DomainsEnabled, SharedState};
 use crate::terminal::Tui;
 use crate::ui::{ActionCommand, ActionOutcome, Command, UiEvent, UiState};
 
 pub async fn run(terminal: &mut Tui, config: &Config) -> Result<()> {
     let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
         config.history.capacity,
-        config.docker.enabled,
-        config.git.enabled,
-        config.systemd.enabled,
+        DomainsEnabled {
+            docker: config.docker.enabled,
+            git: config.git.enabled,
+            systemd: config.systemd.enabled,
+            k8s: config.k8s.enabled,
+        },
     )));
 
     spawn_collectors(&state, config);
@@ -244,6 +248,16 @@ fn spawn_collectors(state: &SharedState, config: &Config) -> Vec<&'static str> {
         ));
     }
 
+    if config.k8s.enabled {
+        started.push(spawn_collector(
+            K8sCollector::new(config.k8s.interval()),
+            Arc::clone(state),
+            |s, status| {
+                s.k8s = DomainState::Observed(status);
+            },
+        ));
+    }
+
     tracing::info!(count = started.len(), collectors = ?started, "collectors started");
     started
 }
@@ -256,7 +270,7 @@ mod tests {
     /// domain means adding its collector name here — and the test below
     /// fails until `spawn_collectors` actually starts it.
     const EXPECTED_DOMAINS: &[&str] = &[
-        "memory", "cpu", "process", "docker", "git", "network", "disk", "systemd",
+        "memory", "cpu", "process", "docker", "git", "network", "disk", "systemd", "k8s",
     ];
 
     /// A config with every optional domain enabled, so the bootstrap
@@ -268,6 +282,7 @@ mod tests {
         config.network.enabled = true;
         config.disk.enabled = true;
         config.systemd.enabled = true;
+        config.k8s.enabled = true;
         config
     }
 
@@ -280,9 +295,12 @@ mod tests {
         let config = all_enabled_config();
         let state: SharedState = Arc::new(std::sync::RwLock::new(AppState::new(
             config.history.capacity,
-            config.docker.enabled,
-            config.git.enabled,
-            config.systemd.enabled,
+            DomainsEnabled {
+                docker: config.docker.enabled,
+                git: config.git.enabled,
+                systemd: config.systemd.enabled,
+                k8s: config.k8s.enabled,
+            },
         )));
 
         let mut started = spawn_collectors(&state, &config);

@@ -476,13 +476,21 @@ fn selected_service(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::DockerUiState;
+    use crate::state::{DockerUiState, DomainsEnabled};
     use sysforge_common::availability::Availability;
     use sysforge_docker::collector::DockerSnapshot;
 
     /// An `AppState` with a single running container, Docker available.
     fn state_with_one_container() -> AppState {
-        let mut state = AppState::new(10, true, true, true);
+        let mut state = AppState::new(
+            10,
+            DomainsEnabled {
+                docker: true,
+                git: true,
+                systemd: true,
+                k8s: true,
+            },
+        );
         let container = ContainerInfo {
             id: "abc123".to_owned(),
             name: "nginx".to_owned(),
@@ -501,7 +509,15 @@ mod tests {
     #[test]
     fn tab_cycles_overview_without_docker() {
         let mut ui = UiState::default();
-        let mut state = AppState::new(10, false, false, false);
+        let mut state = AppState::new(
+            10,
+            DomainsEnabled {
+                docker: false,
+                git: false,
+                systemd: false,
+                k8s: false,
+            },
+        );
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::FocusNext, &state);
         ui.handle(Action::FocusNext, &state);
@@ -513,7 +529,15 @@ mod tests {
     #[test]
     fn switching_to_disabled_docker_view_is_ignored() {
         let mut ui = UiState::default();
-        let mut state = AppState::new(10, false, false, false);
+        let mut state = AppState::new(
+            10,
+            DomainsEnabled {
+                docker: false,
+                git: false,
+                systemd: false,
+                k8s: false,
+            },
+        );
         state.docker = DockerUiState::Disabled;
         ui.handle(Action::SwitchView(ViewId::Docker), &state);
         assert_eq!(ui.view, ViewId::Overview);
@@ -522,7 +546,15 @@ mod tests {
     #[test]
     fn dedicated_view_focuses_its_panel_and_esc_goes_back() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true, true);
+        let state = AppState::new(
+            10,
+            DomainsEnabled {
+                docker: true,
+                git: true,
+                systemd: true,
+                k8s: true,
+            },
+        );
         ui.handle(Action::SwitchView(ViewId::Processes), &state);
         assert_eq!(ui.view, ViewId::Processes);
         assert_eq!(ui.focus, PanelId::Processes);
@@ -534,7 +566,15 @@ mod tests {
     #[test]
     fn selection_clamps_at_zero() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true, true);
+        let state = AppState::new(
+            10,
+            DomainsEnabled {
+                docker: true,
+                git: true,
+                systemd: true,
+                k8s: true,
+            },
+        );
         ui.handle(Action::SelectionUp, &state);
         assert_eq!(ui.docker_selected, 0);
     }
@@ -542,7 +582,15 @@ mod tests {
     #[test]
     fn open_overlay_captures_navigation_and_close() {
         let mut ui = UiState::default();
-        let state = AppState::new(10, true, true, true);
+        let state = AppState::new(
+            10,
+            DomainsEnabled {
+                docker: true,
+                git: true,
+                systemd: true,
+                k8s: true,
+            },
+        );
         ui.overlay = Some(Overlay::loading(String::from(" test ")));
 
         let command = ui.handle(Action::FocusNext, &state);
