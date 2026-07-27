@@ -19,12 +19,22 @@ pub(super) fn render(
     ctx: &RenderCtx<'_>,
 ) {
     match k8s {
-        DomainState::Disabled | DomainState::Pending => {
+        DomainState::Disabled => {
+            placeholder(
+                frame,
+                area,
+                " Pods [8] ─ disabled ",
+                "Kubernetes is disabled. Enable it with [k8s] enabled = true in your config.",
+                ctx,
+                ctx.theme.muted,
+            );
+        }
+        DomainState::Pending => {
             placeholder(
                 frame,
                 area,
                 " Pods [8] ",
-                "sampling...",
+                "connecting to cluster...",
                 ctx,
                 ctx.theme.muted,
             );

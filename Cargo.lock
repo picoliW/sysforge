@@ -2198,10 +2198,12 @@ dependencies = [
 name = "sysforge-k8s"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures",
  "k8s-openapi",
  "kube",
  "serde",
+ "serde_json",
  "sysforge-common",
  "tokio",
  "tracing",

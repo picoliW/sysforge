@@ -33,6 +33,8 @@ pub enum Action {
     Confirm,
     /// Propose an action for the current selection (asks to confirm).
     Propose,
+    /// Propose a rolling restart of the selected pod's deployment.
+    ProposeRollout,
 }
 
 /// Help section a binding belongs to. Presentation only: what an
@@ -176,6 +178,13 @@ const BINDINGS: &[Binding] = &[
         description: "propose action",
     },
     Binding {
+        code: KeyCode::Char('R'),
+        modifiers: KeyModifiers::SHIFT,
+        action: Action::ProposeRollout,
+        context: Context::Actions,
+        description: "rollout restart (k8s)",
+    },
+    Binding {
         code: KeyCode::Char('y'),
         modifiers: KeyModifiers::NONE,
         action: Action::Confirm,
@@ -215,7 +224,7 @@ const BINDINGS: &[Binding] = &[
         modifiers: KeyModifiers::NONE,
         action: Action::OpenLogs,
         context: Context::Docker,
-        description: "logs of the selected container",
+        description: "logs of the selected container / pod",
     },
 ];
 

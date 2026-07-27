@@ -85,6 +85,20 @@ fn execute(command: Command, config: &Config, events: mpsc::UnboundedSender<UiEv
             });
         }
 
+        Command::FetchPodLogs { namespace, name } => {
+            let events = events.clone();
+            tokio::spawn(async move {
+                let lines = match sysforge_k8s::logs::fetch_logs(&namespace, &name).await {
+                    Ok(lines) if lines.is_empty() => {
+                        vec![String::from("(no log output)")]
+                    }
+                    Ok(lines) => lines,
+                    Err(reason) => vec![format!("failed to fetch logs: {reason}")],
+                };
+                let _ = events.send(UiEvent::OverlayContent { lines });
+            });
+        }
+
         Command::RunAction(action) => {
             let socket = config.docker.socket.clone();
             let events = events.clone();
@@ -117,6 +131,23 @@ async fn run_action(action: ActionCommand, socket: String) -> ActionOutcome {
                 }
             }
         }
+        ActionCommand::DeletePod { namespace, name } => {
+            match sysforge_k8s::actions::delete_pod(&namespace, &name).await {
+                Ok(()) => ActionOutcome::Success(format!("Deleted pod {namespace}/{name}")),
+                Err(reason) => {
+                    ActionOutcome::Failure(format!("Failed to delete {name}\n\n{reason}"))
+                }
+            }
+        }
+        ActionCommand::RolloutRestart {
+            namespace,
+            deployment,
+        } => match sysforge_k8s::actions::rollout_restart(&namespace, &deployment).await {
+            Ok(()) => ActionOutcome::Success(format!("Rollout restart requested for {deployment}")),
+            Err(reason) => {
+                ActionOutcome::Failure(format!("Failed to restart {deployment}\n\n{reason}"))
+            }
+        },
     }
 }
 

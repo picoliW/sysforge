@@ -10,5 +10,7 @@
 //! immediately, so the rest of SysForge never depends on the client
 //! library — exactly as the Docker domain hides bollard.
 
+pub mod actions;
 pub mod collector;
 pub mod config;
+pub mod logs;

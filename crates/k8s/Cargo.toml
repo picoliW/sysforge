@@ -9,10 +9,12 @@ authors.workspace = true
 description = "Kubernetes collector for SysForge"
 
 [dependencies]
+chrono.workspace = true
 futures.workspace = true
 k8s-openapi.workspace = true
 kube.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sysforge-common.workspace = true
 tokio.workspace = true
 tracing.workspace = true

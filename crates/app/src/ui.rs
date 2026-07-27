@@ -177,6 +177,13 @@ pub enum Command {
         /// Engine identifier of the container.
         id: String,
     },
+    /// Fetch the logs of a pod and deliver them as a [`UiEvent`].
+    FetchPodLogs {
+        /// Namespace of the pod.
+        namespace: String,
+        /// Pod name.
+        name: String,
+    },
     /// Execute a confirmed domain action.
     RunAction(ActionCommand),
 }
@@ -246,6 +253,20 @@ pub enum ActionCommand {
         /// Unit name.
         unit: String,
     },
+    /// Delete a Kubernetes pod.
+    DeletePod {
+        /// Namespace of the pod.
+        namespace: String,
+        /// Pod name.
+        name: String,
+    },
+    /// Trigger a rolling restart of a deployment (by pod's owner name).
+    RolloutRestart {
+        /// Namespace of the deployment.
+        namespace: String,
+        /// Deployment name.
+        deployment: String,
+    },
 }
 
 /// How a finished action turned out, shown as feedback.
@@ -292,6 +313,53 @@ impl UiState {
             Direction::Up => slot.saturating_sub(1),
             Direction::Down => slot.saturating_add(1),
         };
+    }
+
+    /// Opens a logs overlay for the focused panel's selection, returning
+    /// the fetch [`Command`] if a container or pod is selected.
+    fn open_logs(&mut self, state: &AppState) -> Option<Command> {
+        match self.focus {
+            PanelId::Docker => {
+                let container = selected_container(state, self.docker_selected)?;
+                self.overlay = Some(Overlay::loading(format!(" logs: {} ", container.name)));
+                Some(Command::FetchDockerLogs {
+                    id: container.id.clone(),
+                })
+            }
+            PanelId::K8s => {
+                let pod = selected_pod(state, self.k8s_selected)?;
+                self.overlay = Some(Overlay::loading(format!(" logs: {} ", pod.name)));
+                Some(Command::FetchPodLogs {
+                    namespace: pod.namespace.clone(),
+                    name: pod.name.clone(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Proposes a rolling restart of the focused pod's deployment.
+    fn propose_rollout(&mut self, state: &AppState) {
+        if self.focus != PanelId::K8s {
+            return;
+        }
+        let Some(pod) = selected_pod(state, self.k8s_selected) else {
+            return;
+        };
+        // Heuristic: the deployment name is the pod name without its
+        // replicaset/pod hash suffixes; a precise mapping would read
+        // owner references.
+        let deployment = deployment_of(&pod.name);
+        self.overlay = Some(Overlay::confirm(ActionRequest {
+            prompt: format!(
+                "Rollout restart deployment {}/{}?",
+                pod.namespace, deployment
+            ),
+            command: ActionCommand::RolloutRestart {
+                namespace: pod.namespace.clone(),
+                deployment,
+            },
+        }));
     }
 
     /// Applies an action given the latest observed state, possibly
@@ -346,17 +414,7 @@ impl UiState {
             }
             Action::SelectionUp => self.move_selection(Direction::Up),
             Action::SelectionDown => self.move_selection(Direction::Down),
-            Action::OpenLogs => {
-                if self.focus == PanelId::Docker {
-                    if let Some(container) = selected_container(state, self.docker_selected) {
-                        self.overlay =
-                            Some(Overlay::loading(format!(" logs: {} ", container.name)));
-                        return Some(Command::FetchDockerLogs {
-                            id: container.id.clone(),
-                        });
-                    }
-                }
-            }
+            Action::OpenLogs => return self.open_logs(state),
             Action::OpenHelp => {
                 self.overlay = Some(Overlay::text(" help ", input::help_lines()));
             }
@@ -365,6 +423,7 @@ impl UiState {
                     self.overlay = Some(Overlay::confirm(request));
                 }
             }
+            Action::ProposeRollout => self.propose_rollout(state),
         }
         self.docker_selected = self
             .docker_selected
@@ -480,6 +539,16 @@ fn propose_for_focus(ui: &UiState, state: &AppState) -> Option<ActionRequest> {
                 },
             })
         }
+        PanelId::K8s => {
+            let pod = selected_pod(state, ui.k8s_selected)?;
+            Some(ActionRequest {
+                prompt: format!("Delete pod {}/{}?", pod.namespace, pod.name),
+                command: ActionCommand::DeletePod {
+                    namespace: pod.namespace.clone(),
+                    name: pod.name.clone(),
+                },
+            })
+        }
         _ => None,
     }
 }
@@ -491,6 +560,28 @@ fn selected_service(
 ) -> Option<&sysforge_systemd::collector::ServiceInfo> {
     match state.systemd.observed() {
         Some(Availability::Available(snap)) => snap.services.get(index),
+        _ => None,
+    }
+}
+
+/// Best-effort deployment name from a pod name.
+///
+/// Deployment pods are named `<deployment>-<replicaset-hash>-<pod-hash>`.
+/// Stripping the two trailing hash segments recovers the deployment name
+/// in the common case. A precise mapping would follow owner references;
+/// this heuristic keeps the action self-contained.
+fn deployment_of(pod_name: &str) -> String {
+    let parts: Vec<&str> = pod_name.rsplitn(3, '-').collect();
+    // rsplitn yields [pod_hash, rs_hash, rest]; `rest` is the deployment.
+    parts
+        .get(2)
+        .map_or_else(|| pod_name.to_owned(), |rest| (*rest).to_owned())
+}
+
+/// The pod behind a table row, if any.
+fn selected_pod(state: &AppState, index: usize) -> Option<&sysforge_k8s::collector::PodInfo> {
+    match state.k8s.observed() {
+        Some(Availability::Available(snap)) => snap.pods.get(index),
         _ => None,
     }
 }
