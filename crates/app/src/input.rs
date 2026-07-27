@@ -162,6 +162,13 @@ const BINDINGS: &[Binding] = &[
         description: "systemd view",
     },
     Binding {
+        code: KeyCode::Char('8'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::SwitchView(ViewId::K8s),
+        context: Context::Views,
+        description: "kubernetes view",
+    },
+    Binding {
         code: KeyCode::Char('a'),
         modifiers: KeyModifiers::NONE,
         action: Action::Propose,

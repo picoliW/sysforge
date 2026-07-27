@@ -11,6 +11,7 @@ mod cpu;
 mod disk;
 mod docker;
 mod git;
+mod k8s;
 mod memory;
 mod network;
 mod overlay;
@@ -80,6 +81,7 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             ui.systemd_selected,
             &ctx(PanelId::Systemd),
         ),
+        ViewId::K8s => k8s::render(frame, body, &state.k8s, ui.k8s_selected, &ctx(PanelId::K8s)),
     }
 
     if let Some(overlay) = &ui.overlay {

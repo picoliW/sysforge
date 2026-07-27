@@ -26,6 +26,8 @@ pub enum PanelId {
     Disk,
     /// systemd panel.
     Systemd,
+    /// Kubernetes panel.
+    K8s,
 }
 
 /// The full screens of the application.
@@ -40,11 +42,13 @@ pub enum ViewId {
     Disk,
     /// systemd, full screen (`7`).
     Systemd,
+    /// Kubernetes, full screen (`8`).
+    K8s,
 }
 
 impl ViewId {
     /// Every view, in switch-key order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Overview,
         Self::Docker,
         Self::Processes,
@@ -52,6 +56,7 @@ impl ViewId {
         Self::Network,
         Self::Disk,
         Self::Systemd,
+        Self::K8s,
     ];
 
     /// Title shown in the view bar.
@@ -65,6 +70,7 @@ impl ViewId {
             Self::Network => "network",
             Self::Disk => "disk",
             Self::Systemd => "systemd",
+            Self::K8s => "k8s",
         }
     }
 
@@ -84,6 +90,7 @@ impl ViewId {
             (Self::Network, _) => &[PanelId::Network],
             (Self::Disk, _) => &[PanelId::Disk],
             (Self::Systemd, _) => &[PanelId::Systemd],
+            (Self::K8s, _) => &[PanelId::K8s],
         }
     }
 }
@@ -200,6 +207,8 @@ pub struct UiState {
     pub processes_selected: usize,
     /// Selected row in the systemd services table.
     pub systemd_selected: usize,
+    /// Selected row in the Kubernetes pods table.
+    pub k8s_selected: usize,
     /// Modal overlay, if one is open.
     pub overlay: Option<Overlay>,
 }
@@ -258,7 +267,33 @@ pub enum OverlayKind {
     Running,
 }
 
+/// A one-step selection movement within a table panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    /// Toward the first row.
+    Up,
+    /// Toward the last row.
+    Down,
+}
+
 impl UiState {
+    /// Moves the selection of the focused panel one row in `direction`,
+    /// saturating at zero. The upper bound is re-clamped against the
+    /// live row count at the end of [`Self::handle`].
+    fn move_selection(&mut self, direction: Direction) {
+        let slot = match self.focus {
+            PanelId::Docker => &mut self.docker_selected,
+            PanelId::Processes => &mut self.processes_selected,
+            PanelId::Systemd => &mut self.systemd_selected,
+            PanelId::K8s => &mut self.k8s_selected,
+            _ => return,
+        };
+        *slot = match direction {
+            Direction::Up => slot.saturating_sub(1),
+            Direction::Down => slot.saturating_add(1),
+        };
+    }
+
     /// Applies an action given the latest observed state, possibly
     /// producing a [`Command`]. [`Action::Quit`] is handled by the
     /// caller, not here.
@@ -309,30 +344,8 @@ impl UiState {
             Action::FocusPrev => {
                 self.focus = cycle(self.view.panels(docker_enabled), self.focus, false);
             }
-            Action::SelectionUp => match self.focus {
-                PanelId::Docker => {
-                    self.docker_selected = self.docker_selected.saturating_sub(1);
-                }
-                PanelId::Processes => {
-                    self.processes_selected = self.processes_selected.saturating_sub(1);
-                }
-                PanelId::Systemd => {
-                    self.systemd_selected = self.systemd_selected.saturating_sub(1);
-                }
-                _ => {}
-            },
-            Action::SelectionDown => match self.focus {
-                PanelId::Docker => {
-                    self.docker_selected = self.docker_selected.saturating_add(1);
-                }
-                PanelId::Processes => {
-                    self.processes_selected = self.processes_selected.saturating_add(1);
-                }
-                PanelId::Systemd => {
-                    self.systemd_selected = self.systemd_selected.saturating_add(1);
-                }
-                _ => {}
-            },
+            Action::SelectionUp => self.move_selection(Direction::Up),
+            Action::SelectionDown => self.move_selection(Direction::Down),
             Action::OpenLogs => {
                 if self.focus == PanelId::Docker {
                     if let Some(container) = selected_container(state, self.docker_selected) {
@@ -362,6 +375,7 @@ impl UiState {
         self.systemd_selected = self
             .systemd_selected
             .min(systemd_rows(state).saturating_sub(1));
+        self.k8s_selected = self.k8s_selected.min(k8s_rows(state).saturating_sub(1));
         None
     }
 
@@ -422,6 +436,14 @@ fn process_rows(state: &AppState) -> usize {
 fn systemd_rows(state: &AppState) -> usize {
     match state.systemd.observed() {
         Some(Availability::Available(snap)) => snap.services.len(),
+        _ => 0,
+    }
+}
+
+/// How many rows the Kubernetes pods table currently has.
+fn k8s_rows(state: &AppState) -> usize {
+    match state.k8s.observed() {
+        Some(Availability::Available(snap)) => snap.pods.len(),
         _ => 0,
     }
 }
