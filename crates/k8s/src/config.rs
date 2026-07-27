@@ -15,7 +15,9 @@ use serde::Deserialize;
 pub struct K8sConfig {
     /// Whether the Kubernetes collector runs at all (default `false`).
     pub enabled: bool,
-    /// Milliseconds between samples (default 3000).
+    /// Milliseconds between snapshots of the locally watched state
+    /// (default 3000). No API call happens per tick: the network side
+    /// is a continuous watch that only carries deltas.
     pub interval_ms: u64,
 }
 

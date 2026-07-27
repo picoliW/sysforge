@@ -1,18 +1,30 @@
-//! Pod listing via the async `kube` client.
+//! Pod observation via a Kubernetes watch, exposed as a pull collector.
 //!
-//! The collector lists pods across all namespaces and converts each
-//! into a plain [`PodInfo`] before anything else in SysForge sees it.
-//! The status shown reproduces `kubectl`'s composite logic (reading
-//! container states), not the raw pod `phase`, which can mislead
-//! (a crash-looping pod still reports `phase: Running`).
+//! Internally this collector runs a `kube` watcher + reflector on a
+//! background task: the cluster *pushes* pod changes into a
+//! library-maintained store (reconnection and `resourceVersion`
+//! handling included), and `collect()` merely snapshots that store.
+//! To the runtime this is an ordinary pull [`Collector`] — the push
+//! nature never leaves this crate, exactly as the bollard stream never
+//! leaves the docker crate.
+//!
+//! Each pod is converted into a plain [`PodInfo`] before anything else
+//! in SysForge sees it. The status shown reproduces `kubectl`'s
+//! composite logic (reading container states), not the raw pod
+//! `phase`, which can mislead (a crash-looping pod still reports
+//! `phase: Running`).
 
 use std::time::Duration;
 
+use futures::StreamExt;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Client;
-use kube::api::{Api, ListParams};
+use kube::api::Api;
+use kube::runtime::reflector::Store;
+use kube::runtime::{WatchStreamExt, reflector, watcher};
 use sysforge_common::availability::{Availability, AvailabilityTracker};
 use sysforge_common::collector::{Collector, CollectorError};
+use tokio::task::JoinHandle;
 
 /// One pod as shown in the UI. A SysForge model, not a `kube` type:
 /// the client library never leaves this crate.
@@ -44,35 +56,70 @@ pub struct K8sSnapshot {
     pub total_pods: usize,
 }
 
-/// Lists pods from the current kubeconfig context at a fixed interval.
-#[derive(Debug)]
+/// How long the first full pod list may take before the cluster is
+/// declared unreachable for this attempt.
+const READY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The running watch machinery: the library-maintained store plus the
+/// background task that keeps it fed. Dropping it aborts the task, so
+/// a watch never outlives its collector.
+struct Watch {
+    /// Read handle over the reflector's cache of pods.
+    store: Store<Pod>,
+    /// The engine: polls the watch stream so the store stays fresh.
+    task: JoinHandle<()>,
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// Observes pods through a background watch, snapshotting the local
+/// store at a fixed interval. No network call happens per tick — the
+/// network side is the continuous, delta-only watch.
 pub struct K8sCollector {
     interval: Duration,
     availability: AvailabilityTracker,
+    watch: Option<Watch>,
 }
 
 impl K8sCollector {
-    /// Creates a collector sampling at the given interval.
+    /// Creates a collector snapshotting the store at the given interval.
+    /// The watch itself starts lazily on the first `collect` call.
     #[must_use]
     pub fn new(interval: Duration) -> Self {
         Self {
             interval,
             availability: AvailabilityTracker::new("k8s"),
+            watch: None,
         }
     }
 
-    async fn try_collect(&self) -> Result<K8sSnapshot, String> {
-        // Reads the kubeconfig; fails if none is found or it is invalid.
-        let client = Client::try_default()
-            .await
-            .map_err(|e| format!("connecting to cluster: {e}"))?;
-        let api: Api<Pod> = Api::all(client);
-        let pods = api
-            .list(&ListParams::default())
-            .await
-            .map_err(|e| format!("listing pods: {e}"))?;
-
-        Ok(build_snapshot(pods.items.iter().map(to_pod_info).collect()))
+    /// Ensures the watch is running, then snapshots the store.
+    async fn observe(&mut self) -> Result<K8sSnapshot, String> {
+        let needs_start = match &self.watch {
+            Some(watch) => watch.task.is_finished(),
+            None => true,
+        };
+        let watch = if needs_start {
+            // Dropping a finished/stale watch aborts its task first.
+            self.watch = None;
+            self.watch.insert(start_watch().await?)
+        } else {
+            // The match above guarantees a live watch on this branch.
+            self.watch
+                .as_ref()
+                .ok_or_else(|| String::from("watch state lost"))?
+        };
+        let pods = watch
+            .store
+            .state()
+            .iter()
+            .map(|pod| to_pod_info(pod.as_ref()))
+            .collect();
+        Ok(build_snapshot(pods))
     }
 }
 
@@ -88,8 +135,50 @@ impl Collector for K8sCollector {
     }
 
     async fn collect(&mut self) -> Result<Availability<K8sSnapshot>, CollectorError> {
-        let result = self.try_collect().await;
+        let result = self.observe().await;
         Ok(self.availability.wrap(result))
+    }
+}
+
+/// Connects to the cluster and starts the watch + reflector, waiting
+/// (bounded) for the first full list so the store never reads as an
+/// empty cluster. On failure the engine task is aborted before
+/// returning, so nothing is leaked.
+async fn start_watch() -> Result<Watch, String> {
+    let client = Client::try_default()
+        .await
+        .map_err(|e| format!("connecting to cluster: {e}"))?;
+    let api: Api<Pod> = Api::all(client);
+
+    let (store, writer) = reflector::store();
+    let stream = watcher(api, watcher::Config::default())
+        .default_backoff()
+        .reflect(writer)
+        .applied_objects()
+        .boxed();
+
+    // Streams are lazy: this task is the engine that keeps the store
+    // fresh. Transient errors are the watcher's business (it backs off
+    // and reconnects); we only log them for observability.
+    let task = tokio::spawn(async move {
+        let mut stream = stream;
+        while let Some(event) = stream.next().await {
+            if let Err(err) = event {
+                tracing::debug!(error = %err, "k8s watch error; backing off");
+            }
+        }
+    });
+
+    match tokio::time::timeout(READY_TIMEOUT, store.wait_until_ready()).await {
+        Ok(Ok(())) => Ok(Watch { store, task }),
+        Ok(Err(err)) => {
+            task.abort();
+            Err(format!("watch failed to start: {err}"))
+        }
+        Err(_) => {
+            task.abort();
+            Err(String::from("timed out reaching the cluster"))
+        }
     }
 }
 
