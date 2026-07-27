@@ -7,3 +7,4 @@
 pub mod availability;
 pub mod collector;
 pub mod domain_state;
+pub mod selection;

@@ -49,14 +49,14 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             frame,
             body,
             &state.docker,
-            ui.docker_selected,
+            ui.docker.index(),
             &ctx(PanelId::Docker),
         ),
         ViewId::Processes => processes::render(
             frame,
             body,
             state.processes.as_ref(),
-            ui.processes_selected,
+            ui.processes.index(),
             &ctx(PanelId::Processes),
         ),
         ViewId::Git => git::render(frame, body, &state.git, &ctx(PanelId::Git)),
@@ -78,10 +78,10 @@ pub fn render(frame: &mut Frame, state: &AppState, ui: &UiState, theme: &Theme) 
             frame,
             body,
             &state.systemd,
-            ui.systemd_selected,
+            ui.systemd.index(),
             &ctx(PanelId::Systemd),
         ),
-        ViewId::K8s => k8s::render(frame, body, &state.k8s, ui.k8s_selected, &ctx(PanelId::K8s)),
+        ViewId::K8s => k8s::render(frame, body, &state.k8s, ui.k8s.index(), &ctx(PanelId::K8s)),
     }
 
     if let Some(overlay) = &ui.overlay {
@@ -122,7 +122,7 @@ fn render_overview<'a>(
             frame,
             proc_area,
             state.processes.as_ref(),
-            ui.processes_selected,
+            ui.processes.index(),
             &ctx(PanelId::Processes),
         );
     } else {
@@ -151,14 +151,14 @@ fn render_overview<'a>(
             frame,
             docker_area,
             &state.docker,
-            ui.docker_selected,
+            ui.docker.index(),
             &ctx(PanelId::Docker),
         );
         processes::render(
             frame,
             proc_area,
             state.processes.as_ref(),
-            ui.processes_selected,
+            ui.processes.index(),
             &ctx(PanelId::Processes),
         );
     }

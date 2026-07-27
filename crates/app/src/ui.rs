@@ -8,6 +8,7 @@
 
 use sysforge_common::availability::Availability;
 use sysforge_common::domain_state::DomainState;
+use sysforge_common::selection::Selection;
 use sysforge_docker::collector::ContainerInfo;
 
 use crate::input::{self, Action};
@@ -209,13 +210,13 @@ pub struct UiState {
     /// Which panel currently receives in-panel actions.
     pub focus: PanelId,
     /// Selected row in the Docker container table.
-    pub docker_selected: usize,
+    pub docker: Selection,
     /// Selected row in the processes table.
-    pub processes_selected: usize,
+    pub processes: Selection,
     /// Selected row in the systemd services table.
-    pub systemd_selected: usize,
+    pub systemd: Selection,
     /// Selected row in the Kubernetes pods table.
-    pub k8s_selected: usize,
+    pub k8s: Selection,
     /// Modal overlay, if one is open.
     pub overlay: Option<Overlay>,
 }
@@ -302,17 +303,17 @@ impl UiState {
     /// saturating at zero. The upper bound is re-clamped against the
     /// live row count at the end of [`Self::handle`].
     fn move_selection(&mut self, direction: Direction) {
-        let slot = match self.focus {
-            PanelId::Docker => &mut self.docker_selected,
-            PanelId::Processes => &mut self.processes_selected,
-            PanelId::Systemd => &mut self.systemd_selected,
-            PanelId::K8s => &mut self.k8s_selected,
+        let selection = match self.focus {
+            PanelId::Docker => &mut self.docker,
+            PanelId::Processes => &mut self.processes,
+            PanelId::Systemd => &mut self.systemd,
+            PanelId::K8s => &mut self.k8s,
             _ => return,
         };
-        *slot = match direction {
-            Direction::Up => slot.saturating_sub(1),
-            Direction::Down => slot.saturating_add(1),
-        };
+        match direction {
+            Direction::Up => selection.up(),
+            Direction::Down => selection.down(),
+        }
     }
 
     /// Opens a logs overlay for the focused panel's selection, returning
@@ -320,14 +321,14 @@ impl UiState {
     fn open_logs(&mut self, state: &AppState) -> Option<Command> {
         match self.focus {
             PanelId::Docker => {
-                let container = selected_container(state, self.docker_selected)?;
+                let container = selected_container(state, self.docker.index())?;
                 self.overlay = Some(Overlay::loading(format!(" logs: {} ", container.name)));
                 Some(Command::FetchDockerLogs {
                     id: container.id.clone(),
                 })
             }
             PanelId::K8s => {
-                let pod = selected_pod(state, self.k8s_selected)?;
+                let pod = selected_pod(state, self.k8s.index())?;
                 self.overlay = Some(Overlay::loading(format!(" logs: {} ", pod.name)));
                 Some(Command::FetchPodLogs {
                     namespace: pod.namespace.clone(),
@@ -343,7 +344,7 @@ impl UiState {
         if self.focus != PanelId::K8s {
             return;
         }
-        let Some(pod) = selected_pod(state, self.k8s_selected) else {
+        let Some(pod) = selected_pod(state, self.k8s.index()) else {
             return;
         };
         // Heuristic: the deployment name is the pod name without its
@@ -425,16 +426,10 @@ impl UiState {
             }
             Action::ProposeRollout => self.propose_rollout(state),
         }
-        self.docker_selected = self
-            .docker_selected
-            .min(docker_rows(state).saturating_sub(1));
-        self.processes_selected = self
-            .processes_selected
-            .min(process_rows(state).saturating_sub(1));
-        self.systemd_selected = self
-            .systemd_selected
-            .min(systemd_rows(state).saturating_sub(1));
-        self.k8s_selected = self.k8s_selected.min(k8s_rows(state).saturating_sub(1));
+        self.docker.clamp(docker_rows(state));
+        self.processes.clamp(process_rows(state));
+        self.systemd.clamp(systemd_rows(state));
+        self.k8s.clamp(k8s_rows(state));
         None
     }
 
@@ -520,7 +515,7 @@ fn selected_container(state: &AppState, index: usize) -> Option<&ContainerInfo> 
 fn propose_for_focus(ui: &UiState, state: &AppState) -> Option<ActionRequest> {
     match ui.focus {
         PanelId::Docker => {
-            let container = selected_container(state, ui.docker_selected)?;
+            let container = selected_container(state, ui.docker.index())?;
             Some(ActionRequest {
                 prompt: format!("Restart container {}?", container.name),
                 command: ActionCommand::RestartContainer {
@@ -530,7 +525,7 @@ fn propose_for_focus(ui: &UiState, state: &AppState) -> Option<ActionRequest> {
             })
         }
         PanelId::Systemd => {
-            let service = selected_service(state, ui.systemd_selected)?;
+            let service = selected_service(state, ui.systemd.index())?;
             Some(ActionRequest {
                 prompt: format!("Restart service {}?", service.name),
                 command: ActionCommand::Service {
@@ -540,7 +535,7 @@ fn propose_for_focus(ui: &UiState, state: &AppState) -> Option<ActionRequest> {
             })
         }
         PanelId::K8s => {
-            let pod = selected_pod(state, ui.k8s_selected)?;
+            let pod = selected_pod(state, ui.k8s.index())?;
             Some(ActionRequest {
                 prompt: format!("Delete pod {}/{}?", pod.namespace, pod.name),
                 command: ActionCommand::DeletePod {
@@ -689,7 +684,7 @@ mod tests {
             },
         );
         ui.handle(Action::SelectionUp, &state);
-        assert_eq!(ui.docker_selected, 0);
+        assert_eq!(ui.docker.index(), 0);
     }
 
     #[test]
