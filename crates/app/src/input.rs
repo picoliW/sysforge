@@ -35,6 +35,10 @@ pub enum Action {
     Propose,
     /// Propose a rolling restart of the selected pod's deployment.
     ProposeRollout,
+    /// Propose starting the selected service.
+    ProposeStart,
+    /// Propose stopping the selected service.
+    ProposeStop,
 }
 
 /// Help section a binding belongs to. Presentation only: what an
@@ -175,7 +179,21 @@ const BINDINGS: &[Binding] = &[
         modifiers: KeyModifiers::NONE,
         action: Action::Propose,
         context: Context::Actions,
-        description: "propose action",
+        description: "restart selected (container / service / pod-delete)",
+    },
+    Binding {
+        code: KeyCode::Char('s'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::ProposeStart,
+        context: Context::Actions,
+        description: "start service (systemd)",
+    },
+    Binding {
+        code: KeyCode::Char('x'),
+        modifiers: KeyModifiers::NONE,
+        action: Action::ProposeStop,
+        context: Context::Actions,
+        description: "stop service (systemd)",
     },
     Binding {
         code: KeyCode::Char('R'),

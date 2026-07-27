@@ -5,8 +5,10 @@
 
 A terminal dashboard that brings your development environment into a single
 screen: CPU, memory, processes, Docker containers, the current Git
-repository, and network interfaces — each in its own full-screen view, all
-updating live.
+repository, network interfaces, disk I/O, systemd services, and Kubernetes
+pods — each in its own full-screen view, all updating live, with contextual
+actions (restart a container, delete a pod, restart a service) a keypress
+away.
 
 SysForge is built for Linux and WSL, in Rust, with an emphasis on clean
 architecture: every domain is an independent crate, data flows in one
@@ -23,7 +25,7 @@ cd sysforge
 cargo run --release
 ```
 
-Press `?` at any time for the key bindings. `1`–`5` switch views, `Tab`
+Press `?` at any time for the key bindings. `1`–`8` switch views, `Tab`
 cycles panels within a view, `q` quits.
 
 ### Configuration
@@ -212,6 +214,12 @@ every push and pull request.
   <img src="docs/media/demo.gif" alt="SysForge live demo" width="820">
 </p>
 
+<p align="center">
+  <em>The GIF is generated from <a href="docs/demo.tape"><code>docs/demo.tape</code></a>
+  with <a href="https://github.com/charmbracelet/vhs">vhs</a> — run
+  <code>vhs docs/demo.tape</code> to regenerate it.</em>
+</p>
+
 ### Overview — every domain at a glance
 
 CPU and memory gauges with live sparklines, running containers, and the top
@@ -247,11 +255,34 @@ sparkline; busiest interfaces float to the top.
 
 ![Network view](docs/media/network.png)
 
+### Disk — usage and I/O
+
+Per-device read and write throughput with sparklines, plus capacity and
+used percentage; pseudo-filesystems and duplicate mounts are filtered out.
+
+![Disk view](docs/media/disk.png)
+
+### systemd — service state
+
+Units with their activation state, failed services floated to the top;
+select a service and press `s` / `x` / `r` to start, stop, or restart it.
+
+![Systemd view](docs/media/systemd.png)
+
+### Kubernetes — pods across the cluster
+
+Pods from the current kubeconfig context, fed by a live watch, with
+`kubectl`-accurate status (CrashLoopBackOff, ImagePullBackOff) colored by
+severity and not-ready pods first. Delete a pod, request a rollout restart,
+or fetch logs — all with a confirmation step. Opt-in via `[k8s] enabled = true`.
+
+![Kubernetes view](docs/media/k8s.png)
+
 ## Roadmap
 
-Domains under consideration for future versions: Kubernetes, database
-connections (PostgreSQL, Redis, MongoDB, MySQL), cloud CLIs, and richer
-per-domain interactions (container exec, commit diffs, log streaming).
+Domains under consideration for future versions: database connections
+(PostgreSQL, Redis, MongoDB, MySQL), cloud CLIs, and richer per-domain
+interactions (container exec, commit diffs, live log streaming).
 
 ## License
 

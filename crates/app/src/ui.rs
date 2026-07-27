@@ -339,6 +339,28 @@ impl UiState {
         }
     }
 
+    /// Proposes a start/stop on the focused systemd service.
+    fn propose_service(&mut self, state: &AppState, verb: sysforge_systemd::actions::Verb) {
+        if self.focus != PanelId::Systemd {
+            return;
+        }
+        let Some(service) = selected_service(state, self.systemd.index()) else {
+            return;
+        };
+        let action = match verb {
+            sysforge_systemd::actions::Verb::Start => "Start",
+            sysforge_systemd::actions::Verb::Stop => "Stop",
+            sysforge_systemd::actions::Verb::Restart => "Restart",
+        };
+        self.overlay = Some(Overlay::confirm(ActionRequest {
+            prompt: format!("{action} service {}?", service.name),
+            command: ActionCommand::Service {
+                verb,
+                unit: service.name.clone(),
+            },
+        }));
+    }
+
     /// Proposes a rolling restart of the focused pod's deployment.
     fn propose_rollout(&mut self, state: &AppState) {
         if self.focus != PanelId::K8s {
@@ -425,6 +447,12 @@ impl UiState {
                 }
             }
             Action::ProposeRollout => self.propose_rollout(state),
+            Action::ProposeStart => {
+                self.propose_service(state, sysforge_systemd::actions::Verb::Start);
+            }
+            Action::ProposeStop => {
+                self.propose_service(state, sysforge_systemd::actions::Verb::Stop);
+            }
         }
         self.docker.clamp(docker_rows(state));
         self.processes.clamp(process_rows(state));
